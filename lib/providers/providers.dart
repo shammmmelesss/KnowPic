@@ -1,0 +1,226 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/photo_asset.dart';
+import '../models/scan_progress.dart';
+import '../models/scan_report.dart';
+import '../models/similar_group.dart';
+import '../models/trash_item.dart';
+import '../services/app_settings.dart';
+import '../services/learning_service.dart';
+import '../services/metadata_store.dart';
+import '../services/photo_library_service.dart';
+import '../services/ranking_service.dart';
+import '../services/report_service.dart';
+import '../services/scanner_service.dart';
+import '../services/similarity_service.dart';
+import '../services/trash_service.dart';
+
+// ---- 服务注入（main() 中 override 带依赖的服务）----
+
+final storeProvider = Provider<MetadataStore>(
+  (ref) => throw UnimplementedError('MetadataStore 需在 main 中注入'),
+);
+
+final settingsProvider = NotifierProvider<SettingsController, AppSettings>(
+  SettingsController.new,
+);
+
+class SettingsController extends Notifier<AppSettings> {
+  AppSettings? _initial;
+
+  /// 由 main() 注入初始值
+  set initial(AppSettings v) => _initial = v;
+
+  @override
+  AppSettings build() => _initial ??
+      (throw UnimplementedError('SettingsController 需在 main 中 override'));
+
+  Future<void> toggleHelpImprove(bool v) async {
+    state = state.copyWith(helpImprove: v);
+    await state.save(ref.read(storeProvider).rootDir);
+  }
+
+  Future<void> toggleConfirmBeforeDelete(bool v) async {
+    state = state.copyWith(confirmBeforeDelete: v);
+    await state.save(ref.read(storeProvider).rootDir);
+  }
+
+  Future<void> updateLastScan() async {
+    state = state.copyWith(lastScanAt: DateTime.now());
+    await state.save(ref.read(storeProvider).rootDir);
+  }
+}
+
+final libraryProvider = Provider<PhotoLibraryService>(
+  (ref) => PhotoManagerLibrary(),
+);
+
+final learningProvider = Provider<LearningService>(
+  (ref) => LearningService(ref.watch(storeProvider)),
+);
+
+final similarityProvider = Provider<SimilarityService>(
+  (ref) => SimilarityService(),
+);
+
+final rankingProvider = Provider<RankingService>(
+  (ref) => RankingService(ref.watch(learningProvider)),
+);
+
+final scannerProvider = Provider<ScannerService>(
+  (ref) => ScannerService(
+    library: ref.watch(libraryProvider),
+    store: ref.watch(storeProvider),
+    similarity: ref.watch(similarityProvider),
+    ranking: ref.watch(rankingProvider),
+  ),
+);
+
+final trashProvider = Provider<TrashService>(
+  (ref) => TrashService(ref.watch(storeProvider), ref.watch(libraryProvider)),
+);
+
+final reportProvider = Provider<ReportService>(
+  (ref) => ReportService(ref.watch(storeProvider)),
+);
+
+// ---- 权限 ----
+
+final permissionControllerProvider =
+    NotifierProvider<PermissionController, bool>(PermissionController.new);
+
+class PermissionController extends Notifier<bool> {
+  @override
+  bool build() => ref.watch(libraryProvider).hasPermission;
+
+  Future<bool> request() async {
+    final ok = await ref.read(libraryProvider).requestPermission();
+    state = ok;
+    if (ok) {
+      ref.invalidate(recentPhotosProvider);
+    }
+    return ok;
+  }
+}
+
+/// 最近 30 天照片（首页冷启动展示，文档 9.1）
+final recentPhotosProvider = FutureProvider<List<PhotoAsset>>((ref) async {
+  final lib = ref.watch(libraryProvider);
+  final photos = await lib.loadAllPhotos();
+  final cutoff = DateTime.now().subtract(const Duration(days: 30));
+  final recent =
+      photos.where((p) => p.createdTime.isAfter(cutoff)).toList()
+        ..sort((a, b) => b.createdTime.compareTo(a.createdTime));
+  return recent;
+});
+
+// ---- 扫描 ----
+
+final scanProgressProvider =
+    NotifierProvider<ScanProgressController, ScanProgress>(ScanProgressController.new);
+
+class ScanProgressController extends Notifier<ScanProgress> {
+  VoidCallback? _listener;
+  ValueNotifier<ScanProgress>? _progress;
+
+  @override
+  ScanProgress build() {
+    final progress = ref.read(scannerProvider).progress;
+    if (_listener != null && _progress != null) {
+      _progress!.removeListener(_listener!);
+    }
+    _progress = progress;
+    _listener = () {
+      final p = progress.value;
+      state = p;
+      if (p.phase == ScanPhase.done) {
+        // 扫描完成 → 刷新分组/资产视图
+        ref.read(groupsControllerProvider.notifier).reload();
+        ref.read(assetsControllerProvider.notifier).reload();
+      }
+    };
+    progress.addListener(_listener!);
+    ref.onDispose(() {
+      if (_listener != null) progress.removeListener(_listener!);
+    });
+    return progress.value;
+  }
+
+  Future<bool> startScan({bool incremental = false}) async {
+    final scanner = ref.read(scannerProvider);
+    try {
+      if (incremental) {
+        await scanner.incrementalScan();
+      } else {
+        await scanner.fullScan();
+      }
+      await ref.read(settingsProvider.notifier).updateLastScan();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool get isBusy => state.isRunning || ref.read(scannerProvider).isRunning;
+}
+
+// ---- 资产与分组 ----
+
+final assetsControllerProvider =
+    NotifierProvider<AssetsController, Map<String, PhotoAsset>>(AssetsController.new);
+
+class AssetsController extends Notifier<Map<String, PhotoAsset>> {
+  @override
+  Map<String, PhotoAsset> build() {
+    ref.keepAlive();
+    return Map.of(ref.watch(storeProvider).assets);
+  }
+
+  void reload() => state = Map.of(ref.read(storeProvider).assets);
+}
+
+final groupsControllerProvider =
+    NotifierProvider<GroupsController, List<SimilarGroup>>(GroupsController.new);
+
+class GroupsController extends Notifier<List<SimilarGroup>> {
+  @override
+  List<SimilarGroup> build() {
+    ref.keepAlive();
+    return List.of(ref.watch(storeProvider).groups);
+  }
+
+  void reload() => state = List.of(ref.read(storeProvider).groups);
+}
+
+// ---- 回收站 ----
+
+final trashControllerProvider =
+    NotifierProvider<TrashController, List<TrashItem>>(TrashController.new);
+
+class TrashController extends Notifier<List<TrashItem>> {
+  @override
+  List<TrashItem> build() {
+    ref.keepAlive();
+    return List.of(ref.watch(storeProvider).trashItems);
+  }
+
+  void reload() => state = List.of(ref.read(storeProvider).trashItems);
+}
+
+// ---- 清理报告 ----
+
+final reportsControllerProvider =
+    NotifierProvider<ReportsController, List<CleanReport>>(ReportsController.new);
+
+class ReportsController extends Notifier<List<CleanReport>> {
+  @override
+  List<CleanReport> build() {
+    ref.keepAlive();
+    return List.of(ref.watch(storeProvider).reports);
+  }
+
+  void reload() => state = List.of(ref.read(storeProvider).reports);
+}
