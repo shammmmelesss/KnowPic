@@ -51,6 +51,41 @@ class AppConfig {
   static const double objectiveRatio = 0.4;
   static const double personalRatio = 0.6;
 
+  // ---- 多场景偏好（文档 8.1：人像/风景/截图等分别维护独立模型）----
+  static const String scenePortrait = 'portrait';
+  static const String sceneLandscape = 'landscape';
+  static const String sceneDocument = 'document';
+  static const String sceneFood = 'food';
+  static const String sceneOther = 'other';
+  static const String defaultScene = 'all'; // 全局汇总模型（UI 展示/冷启动兜底）
+  static const List<String> sceneKeys = [
+    scenePortrait,
+    sceneLandscape,
+    sceneDocument,
+    sceneFood,
+    sceneOther,
+  ];
+
+  /// 场景中文名（设置页展示）
+  static String sceneLabel(String scene) {
+    switch (scene) {
+      case scenePortrait:
+        return '人像';
+      case sceneLandscape:
+        return '风景';
+      case sceneDocument:
+        return '文档/截图';
+      case sceneFood:
+        return '美食';
+      case sceneOther:
+        return '其他';
+      case defaultScene:
+        return '全局';
+      default:
+        return scene;
+    }
+  }
+
   // ---- 隐式反馈阈值 ----
   static const int viewLongSeconds = 2; // 长停留判定（组详情预览）
 }

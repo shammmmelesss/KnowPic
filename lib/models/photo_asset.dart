@@ -19,6 +19,10 @@ class PhotoAsset {
     this.baseScore = 0,
     this.sceneType = 'other',
     this.finalScore = 0,
+    this.faceCount = 0,
+    this.eyeOpenScore = 0,
+    this.smileScore = 0,
+    this.decisiveScore = 0,
   }) : features = features ?? Float32List(AppConfig.featureDim);
 
   final String id;
@@ -35,6 +39,10 @@ class PhotoAsset {
   double baseScore; // NIMA 客观美学分（0-10）
   String sceneType; // portrait | landscape | document | food | other
   double finalScore; // 综合分（客观+个人偏好）
+  int faceCount; // 检测到的人脸数
+  double eyeOpenScore; // 0-1 睁眼估计
+  double smileScore; // 0-1 微笑估计
+  double decisiveScore; // 0-1 决定性瞬间（连拍推荐）
 
   double get aspectRatio => height == 0 ? 0 : width / height;
 
@@ -48,6 +56,10 @@ class PhotoAsset {
     double? baseScore,
     String? sceneType,
     double? finalScore,
+    int? faceCount,
+    double? eyeOpenScore,
+    double? smileScore,
+    double? decisiveScore,
   }) {
     return PhotoAsset(
       id: id,
@@ -63,6 +75,10 @@ class PhotoAsset {
       baseScore: baseScore ?? this.baseScore,
       sceneType: sceneType ?? this.sceneType,
       finalScore: finalScore ?? this.finalScore,
+      faceCount: faceCount ?? this.faceCount,
+      eyeOpenScore: eyeOpenScore ?? this.eyeOpenScore,
+      smileScore: smileScore ?? this.smileScore,
+      decisiveScore: decisiveScore ?? this.decisiveScore,
     );
   }
 
@@ -79,6 +95,10 @@ class PhotoAsset {
         'baseScore': baseScore,
         'sceneType': sceneType,
         'finalScore': finalScore,
+        'faceCount': faceCount,
+        'eyeOpenScore': eyeOpenScore,
+        'smileScore': smileScore,
+        'decisiveScore': decisiveScore,
       };
 
   factory PhotoAsset.fromJson(Map<String, dynamic> json) {
@@ -96,6 +116,10 @@ class PhotoAsset {
       baseScore: (json['baseScore'] as num?)?.toDouble() ?? 0,
       sceneType: json['sceneType'] as String? ?? 'other',
       finalScore: (json['finalScore'] as num?)?.toDouble() ?? 0,
+      faceCount: json['faceCount'] as int? ?? 0,
+      eyeOpenScore: (json['eyeOpenScore'] as num?)?.toDouble() ?? 0,
+      smileScore: (json['smileScore'] as num?)?.toDouble() ?? 0,
+      decisiveScore: (json['decisiveScore'] as num?)?.toDouble() ?? 0,
     );
   }
 }

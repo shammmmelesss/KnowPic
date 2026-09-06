@@ -127,6 +127,10 @@ class ScannerService {
               features: a.analysis.features,
               baseScore: a.analysis.aestheticScore,
               sceneType: a.analysis.sceneType,
+              faceCount: a.analysis.faceCount,
+              eyeOpenScore: a.analysis.eyeOpenScore,
+              smileScore: a.analysis.smileScore,
+              decisiveScore: a.analysis.decisiveScore,
             );
           }
           done += batch.length;

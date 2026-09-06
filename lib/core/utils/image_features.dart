@@ -4,24 +4,38 @@ import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
 import '../constants.dart';
+import 'face_detector.dart';
+import 'motion_analysis.dart';
 import 'vector_math.dart';
 
-/// 单张图片的分析结果：128 维特征 + 客观美学分 + 场景类型
+/// 单张图片的分析结果：128 维特征 + 客观美学分 + 场景类型 + 人脸/动作分析
 class ImageAnalysis {
   const ImageAnalysis({
     required this.features,
     required this.aestheticScore,
     required this.sceneType,
+    this.faceCount = 0,
+    this.eyeOpenScore = 0,
+    this.smileScore = 0,
+    this.decisiveScore = 0,
   });
 
   final Float32List features;
   final double aestheticScore; // 0-10（NIMA 的轻量替代）
   final String sceneType; // portrait | landscape | document | food | other
+  final int faceCount; // 检测到的人脸数（0 = 未检测到）
+  final double eyeOpenScore; // 0-1 最大人脸睁眼估计
+  final double smileScore; // 0-1 最大人脸微笑估计
+  final double decisiveScore; // 0-1 决定性瞬间（清晰 + 姿态舒展）
 
   Map<String, dynamic> toJson() => {
         'features': features.toList(),
         'aestheticScore': aestheticScore,
         'sceneType': sceneType,
+        'faceCount': faceCount,
+        'eyeOpenScore': eyeOpenScore,
+        'smileScore': smileScore,
+        'decisiveScore': decisiveScore,
       };
 }
 
@@ -247,7 +261,19 @@ class ImageFeatures {
     final score = _aestheticScore(sharpness, highlightClip * invN, shadowClip * invN,
         f[17], _compositionScore(cellLuma, meanL), totalGrad / (n * 255.0));
     final scene = _sceneType(skinCount * invN, f[17], meanL, contrast, im.width, im.height);
-    return ImageAnalysis(features: scaled, aestheticScore: score, sceneType: scene);
+
+    // 人脸检测（合影闭眼/微笑）与动作峰值捕捉（决定性瞬间）
+    final face = FaceDetector.analyze(src);
+    final motion = MotionAnalyzer.analyze(src);
+    return ImageAnalysis(
+      features: scaled,
+      aestheticScore: score,
+      sceneType: scene,
+      faceCount: face.faceCount,
+      eyeOpenScore: face.largest?.eyeOpenScore ?? 0,
+      smileScore: face.largest?.smileScore ?? 0,
+      decisiveScore: motion.decisiveScore,
+    );
   }
 
   static int _logBucket(double mag) {

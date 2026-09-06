@@ -1,5 +1,6 @@
 import '../core/constants.dart';
 import '../core/utils/vector_math.dart';
+import '../models/group_type.dart';
 import '../models/photo_asset.dart';
 import 'learning_service.dart';
 
@@ -12,8 +13,10 @@ class RankingService {
   final LearningService _learning;
 
   /// 计算综合分并排序（降序），返回排序后的列表
+  /// 多场景偏好：按组内占主导的场景取独立偏好模型（文档 8.1）
   List<PhotoAsset> sortGroup(List<PhotoAsset> members) {
-    final pref = _learning.model;
+    if (members.isEmpty) return members;
+    final pref = _learning.modelFor(_dominantScene(members));
     final trained = pref.isTrained;
     for (final a in members) {
       double personal = 0;
@@ -30,6 +33,23 @@ class RankingService {
     return members;
   }
 
+  /// 组内占比最高的场景（多场景偏好路由依据）
+  String _dominantScene(List<PhotoAsset> members) {
+    final counts = <String, int>{};
+    for (final a in members) {
+      counts[a.sceneType] = (counts[a.sceneType] ?? 0) + 1;
+    }
+    String best = AppConfig.sceneOther;
+    var bestCount = 0;
+    counts.forEach((k, v) {
+      if (v > bestCount) {
+        bestCount = v;
+        best = k;
+      }
+    });
+    return best;
+  }
+
   /// 选出 AI 推荐的"最佳"（FinalScore 最高者）
   String? pickBest(List<PhotoAsset> members) {
     if (members.isEmpty) return null;
@@ -38,8 +58,26 @@ class RankingService {
   }
 
   /// 推荐理由（对应 UI 徽章"👑 最清晰"等）
-  String bestReason(PhotoAsset best, List<PhotoAsset> members) {
+  String bestReason(PhotoAsset best, List<PhotoAsset> members, {GroupType? groupType}) {
     if (members.length < 2) return '唯一选择';
+
+    // 连拍组：推荐动作最舒展、最清晰的"决定性瞬间"（文档 Phase 2 动作峰值捕捉）
+    if (groupType == GroupType.burst && best.decisiveScore > 0.3) {
+      final maxD = members
+          .map((a) => a.decisiveScore)
+          .reduce((a, b) => a > b ? a : b);
+      if (best.decisiveScore >= maxD - 0.05) return '决定性瞬间';
+    }
+
+    // 多人合影：推荐睁眼、微笑最佳的"合影表情最佳"（文档 Phase 1 人脸检测）
+    if (members.any((a) => a.faceCount >= 2) && best.faceCount >= 1) {
+      final groupScore = 0.45 * best.eyeOpenScore + 0.30 * best.smileScore;
+      final bestG = members
+          .map((a) => 0.45 * a.eyeOpenScore + 0.30 * a.smileScore)
+          .reduce((a, b) => a > b ? a : b);
+      if (groupScore >= bestG - 0.05 && groupScore > 0.15) return '合影表情最佳';
+    }
+
     final sharps = members.map((a) => a.features[16]).toList()..sort();
     final sharpRank = sharps.indexOf(best.features[16]);
     if (sharpRank >= sharps.length - 1 && best.features[16] > 0.5) return '最清晰';

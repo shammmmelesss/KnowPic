@@ -65,7 +65,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     final best = members.isEmpty ? null : members.first;
     final bestReason = best == null || members.length < 2
         ? '唯一选择'
-        : ranking.bestReason(best, members);
+        : ranking.bestReason(best, members, groupType: group.type);
     final keepCount = _keepIds.length;
     final freedBytes = members
         .where((m) => !_keepIds.contains(m.id))

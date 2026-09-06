@@ -18,7 +18,17 @@ class LearningService {
   int consecutiveRejections = 0;
   bool _resetPromptPending = false;
 
-  PreferenceModel get model => _store.preference;
+  /// 全局汇总偏好模型（UI 展示用）
+  PreferenceModel get model =>
+      _store.preferences[AppConfig.defaultScene] ??
+      _store.scenePreference(AppConfig.defaultScene);
+
+  /// 所有场景模型（settings 页展示）
+  Map<String, PreferenceModel> get models => _store.preferences;
+
+  /// 按场景取独立偏好模型（文档 8.1 多场景偏好）
+  PreferenceModel modelFor(String sceneType) =>
+      _store.scenePreference(sceneType);
 
   /// 记录一次行为（隐式/显式反馈）
   void collect(UserAction action) {
@@ -38,15 +48,23 @@ class LearningService {
       for (final pos in positives) {
         final fPos = _store.assetFeatures(pos.assetId);
         if (fPos == null) continue;
+        // 正样本属于哪个场景，就训练哪个场景的独立模型（文档 8.1）
+        final scene = _store.assets[pos.assetId]?.sceneType ?? AppConfig.sceneOther;
+        final sceneModel = modelFor(scene);
         // 每个正样本与最多 5 个负样本配对（BPR）
         for (final neg in negatives.take(5)) {
           final fNeg = _store.assetFeatures(neg.assetId);
           if (fNeg == null) continue;
-          model.updatePair(fPos.toList(), fNeg.toList(), (pos.weight + neg.weight) / 2);
+          final w = (pos.weight + neg.weight) / 2;
+          sceneModel.updatePair(fPos.toList(), fNeg.toList(), w);
+          // 全局汇总模型同步学习，用于 UI 展示与冷启动兜底
+          if (!identical(model, sceneModel)) {
+            model.updatePair(fPos.toList(), fNeg.toList(), w);
+          }
           trained++;
         }
       }
-      Log.d('Learning', 'trained pairs=$trained samples=${model.sampleCount}');
+      Log.d('Learning', 'trained pairs=$trained scenes=${_store.preferences.length}');
     }
     _buffer.clear();
     await _store.savePref();
@@ -72,12 +90,14 @@ class LearningService {
     return v;
   }
 
-  /// 确认重置偏好（文档 9.4 响应动作）
+  /// 确认重置偏好（文档 9.4 响应动作）：重置全部场景模型
   Future<void> confirmReset() async {
-    model.reset();
+    for (final m in _store.preferences.values) {
+      m.reset();
+    }
     consecutiveRejections = 0;
     _resetPromptPending = false;
     await _store.savePref();
-    Log.d('Learning', 'preferences reset #${model.resetCount}');
+    Log.d('Learning', 'preferences reset scenes=${_store.preferences.length}');
   }
 }

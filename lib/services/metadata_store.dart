@@ -28,7 +28,10 @@ class MetadataStore {
   final List<SimilarGroup> groups = [];
   final List<TrashItem> trashItems = [];
   final List<CleanReport> reports = [];
-  late PreferenceModel preference;
+
+  /// 多场景偏好模型：sceneType -> PreferenceModel（文档 8.1）
+  /// 除各场景独立模型外，维护一个 'all' 全局汇总模型。
+  late Map<String, PreferenceModel> preferences;
 
   String get _assetsPath => '${metaDir.path}/${AppConfig.assetsFile}';
   String get _featuresPath => '${metaDir.path}/${AppConfig.featuresFile}';
@@ -44,7 +47,7 @@ class MetadataStore {
   Future<void> init() async {
     if (!await metaDir.exists()) await metaDir.create(recursive: true);
     if (!await trashDir.exists()) await trashDir.create(recursive: true);
-    preference = PreferenceModel();
+    preferences = {AppConfig.defaultScene: PreferenceModel()};
     await _loadAssets();
     await _loadGroups();
     await _loadPref();
@@ -147,12 +150,31 @@ class MetadataStore {
 
   // ---- 偏好 ----
 
+  /// 取指定场景的偏好模型（不存在则新建，冷启动返回全 0.5 权重模型）
+  PreferenceModel scenePreference(String sceneType) {
+    final key = sceneType.isEmpty ? AppConfig.sceneOther : sceneType;
+    final m = preferences[key];
+    if (m != null) return m;
+    final created = PreferenceModel();
+    preferences[key] = created;
+    return created;
+  }
+
   Future<void> _loadPref() async {
     final f = File(_prefPath);
+    preferences = {AppConfig.defaultScene: PreferenceModel()};
     if (!await f.exists()) return;
     try {
       final json = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
-      preference = PreferenceModel.fromJson(json);
+      final scenes = json['scenes'];
+      if (scenes is Map<String, dynamic>) {
+        scenes.forEach((k, v) {
+          preferences[k] = PreferenceModel.fromJson(v as Map<String, dynamic>);
+        });
+      } else {
+        // 旧版单模型格式：归入默认场景，兼容升级
+        preferences[AppConfig.defaultScene] = PreferenceModel.fromJson(json);
+      }
     } catch (err) {
       Log.e('Store', 'load pref failed', err);
     }
@@ -160,7 +182,9 @@ class MetadataStore {
 
   Future<void> savePref() async {
     await File(_prefPath).writeAsString(
-      jsonEncode(preference.toJson()),
+      jsonEncode({
+        'scenes': preferences.map((k, v) => MapEntry(k, v.toJson())),
+      }),
       flush: true,
     );
   }
