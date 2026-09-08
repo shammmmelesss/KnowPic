@@ -70,6 +70,7 @@ class GroupsScreen extends ConsumerWidget {
                     }
                     final g = groups[i - 1];
                     return Padding(
+                      key: ValueKey('group_card_${i - 1}'),
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _GroupCardView(
                         groupId: g.groupId,

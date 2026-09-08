@@ -340,6 +340,7 @@ class _QuickAction extends StatelessWidget {
     final b = theme.brightness;
     return Expanded(
       child: IosPressable(
+        key: ValueKey('qa_$label'),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
