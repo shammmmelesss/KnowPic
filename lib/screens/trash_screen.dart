@@ -1,11 +1,14 @@
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/ios_design.dart';
 import '../models/trash_item.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/ios_ui.dart';
 
 /// 回收站（对应文档 9.5 安全机制：保留 30 天、一键还原）
 class TrashScreen extends ConsumerStatefulWidget {
@@ -36,40 +39,49 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
   Widget build(BuildContext context) {
     final items = ref.watch(trashControllerProvider);
     final theme = Theme.of(context);
+    final b = theme.brightness;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('回收站'),
+      appBar: frostedAppBar(
+        context,
+        title: '回收站',
         actions: [
           if (items.isNotEmpty)
-            TextButton(
+            CupertinoButton(
+              minimumSize: const Size(44, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               onPressed: () => _emptyAll(),
-              child: const Text('清空回收站'),
+              child: Text(
+                '清空',
+                style: TextStyle(color: Ios.red(b), fontSize: 17),
+              ),
             ),
         ],
       ),
       body: items.isEmpty
           ? const EmptyState(
-              icon: Icons.delete_outline,
+              icon: CupertinoIcons.trash,
               title: '回收站是空的',
               subtitle: '清理的照片会在这里保留 30 天，可随时还原',
             )
           : Column(
               children: [
-                Container(
-                  width: double.infinity,
-                  color: theme.colorScheme.surfaceContainerHighest,
+                IosCard(
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   padding: const EdgeInsets.all(12),
-                  child: Text(
-                    '已删除照片保留 30 天，过期将自动彻底删除；还原后照片将回到系统相册。',
-                    style: theme.textTheme.bodySmall,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      '已删除照片保留 30 天，过期将自动彻底删除；还原后照片将回到系统相册。',
+                      style: theme.textTheme.bodySmall,
+                    ),
                   ),
                 ),
                 Expanded(
                   child: ListView.separated(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(16),
                     itemCount: items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, i) {
                       final file =
                           ref.read(storeProvider).trashFileOf(items[i]);
@@ -91,29 +103,29 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
     final restored = await ref.read(trashProvider).restore([item.id]);
     if (!mounted) return;
     ref.read(trashControllerProvider.notifier).reload();
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(
-          restored.isNotEmpty
-              ? '已还原${item.isLivePhoto ? '（Live Photo 仅还原静态图）' : ''}'
-              : '还原失败，请重试',
-        ),
-      ));
+    showIosToast(
+      context,
+      restored.isNotEmpty
+          ? '已还原${item.isLivePhoto ? '（Live Photo 仅还原静态图）' : ''}'
+          : '还原失败，请重试',
+      success: restored.isNotEmpty,
+    );
   }
 
   Future<void> _permanentDelete(TrashItem item) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => CupertinoAlertDialog(
         title: const Text('彻底删除？'),
         content: const Text('此操作不可恢复，照片将被永久删除。'),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('彻底删除'),
           ),
@@ -130,15 +142,17 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
   Future<void> _emptyAll() async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => CupertinoAlertDialog(
         title: const Text('清空回收站？'),
         content: const Text('将彻底删除回收站中的所有照片，此操作不可恢复。'),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('清空'),
           ),
@@ -146,16 +160,12 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
       ),
     );
     if (ok != true) return;
-    final ids = ref
-        .read(trashControllerProvider)
-        .map((t) => t.id)
-        .toList();
+    final ids =
+        ref.read(trashControllerProvider).map((t) => t.id).toList();
     await ref.read(trashProvider).permanentDelete(ids);
     if (mounted) {
       ref.read(trashControllerProvider.notifier).reload();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('回收站已清空')),
-      );
+      showIosToast(context, '回收站已清空', success: true);
     }
   }
 }
@@ -173,88 +183,75 @@ class _TrashItemCard extends StatelessWidget {
   final VoidCallback onRestore;
   final VoidCallback onDelete;
 
-  String _fmt(int bytes) {
-    if (bytes >= 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / 1024).toStringAsFixed(0)} KB';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(
-                file,
-                width: 64,
-                height: 64,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Container(
-                  width: 64,
-                  height: 64,
-                  color: cs.surfaceContainerHighest,
-                  child: const Icon(Icons.image_not_supported_outlined),
+    final b = theme.brightness;
+    final urgent = item.remainingDays <= 5;
+
+    return IosCard(
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(Ios.radiusThumb),
+            child: Image.file(
+              file,
+              width: 56,
+              height: 56,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Container(
+                width: 56,
+                height: 56,
+                color: cs.surfaceContainerHighest,
+                child: Icon(CupertinoIcons.photo,
+                    size: 20, color: Ios.tertiaryLabel(b)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.originalTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
                 ),
-              ),
+                const SizedBox(height: 3),
+                Text(
+                  '${Ios.formatBytes(item.byteSize)}${item.isLivePhoto ? ' · Live' : ''}',
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 6),
+                IosBadge(
+                  label: item.isExpired ? '已过期' : '还剩 ${item.remainingDays} 天',
+                  color: urgent
+                      ? Ios.red(b).withValues(alpha: 0.12)
+                      : Ios.fill(b),
+                  fg: urgent ? Ios.red(b) : Ios.secondaryLabel(b),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.originalTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${_fmt(item.byteSize)}${item.isLivePhoto ? ' · Live' : ''}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: item.remainingDays <= 5
-                          ? cs.errorContainer
-                          : cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      item.isExpired ? '已过期' : '还剩 ${item.remainingDays} 天',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: item.remainingDays <= 5
-                            ? cs.onErrorContainer
-                            : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: onRestore,
-              icon: const Icon(Icons.settings_backup_restore),
-              tooltip: '还原',
-            ),
-            IconButton(
-              onPressed: onDelete,
-              icon: const Icon(Icons.delete_forever_outlined),
-              tooltip: '彻底删除',
-            ),
-          ],
-        ),
+          ),
+          CupertinoButton(
+            minimumSize: const Size(44, 44),
+            padding: const EdgeInsets.all(6),
+            onPressed: onRestore,
+            child: Icon(CupertinoIcons.arrow_counterclockwise,
+                size: 22, color: Ios.blue(b)),
+          ),
+          CupertinoButton(
+            minimumSize: const Size(44, 44),
+            padding: const EdgeInsets.all(6),
+            onPressed: onDelete,
+            child: Icon(CupertinoIcons.trash_fill,
+                size: 22, color: Ios.red(b)),
+          ),
+        ],
       ),
     );
   }

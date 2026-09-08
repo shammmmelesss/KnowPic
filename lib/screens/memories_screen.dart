@@ -1,11 +1,15 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/haptics.dart';
+import '../core/ios_design.dart';
 import '../models/photo_asset.dart';
 import '../providers/providers.dart';
 import '../services/memory_service.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/ios_ui.dart';
 import '../widgets/photo_thumb.dart';
 
 /// 记忆盲盒 & 那年今日（对应文档 Phase 3 生态与体验）
@@ -18,7 +22,16 @@ class MemoriesScreen extends ConsumerStatefulWidget {
 
 class _MemoriesScreenState extends ConsumerState<MemoriesScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 2, vsync: this);
+  late final TabController _tab = TabController(length: 2, vsync: this)
+    ..addListener(_onTabChanged);
+  int _seg = 0;
+
+  void _onTabChanged() {
+    if (_tab.indexIsChanging) return;
+    if (_seg != _tab.index) {
+      setState(() => _seg = _tab.index);
+    }
+  }
 
   @override
   void dispose() {
@@ -28,15 +41,41 @@ class _MemoriesScreenState extends ConsumerState<MemoriesScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final b = theme.brightness;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('记忆'),
-        bottom: TabBar(
-          controller: _tab,
-          tabs: const [
-            Tab(text: '记忆盲盒'),
-            Tab(text: '那年今日'),
-          ],
+      appBar: frostedAppBar(
+        context,
+        title: '记忆',
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(44),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: SizedBox(
+              width: 220,
+              height: 32,
+              child: CupertinoSlidingSegmentedControl<int>(
+                groupValue: _seg,
+                backgroundColor: Ios.fill(b),
+                thumbColor: Ios.card(b),
+                children: {
+                  0: Text('记忆盲盒', style: theme.textTheme.bodySmall),
+                  1: Text('那年今日', style: theme.textTheme.bodySmall),
+                },
+                onValueChanged: (v) {
+                  if (v == null || v == _seg) return;
+                  Haptics.selection();
+                  setState(() => _seg = v);
+                  _tab.animateTo(
+                    v,
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
       body: TabBarView(
@@ -64,6 +103,7 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
   void _pick() {
     final assets = ref.read(assetsControllerProvider);
     final picked = MemoryService.pickBlindBox(assets, count: 1);
+    Haptics.success();
     setState(() {
       _picked = picked;
       _count++;
@@ -73,11 +113,12 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final b = theme.brightness;
     final assets = ref.watch(assetsControllerProvider);
 
     if (assets.isEmpty) {
       return const EmptyState(
-        icon: Icons.auto_awesome_outlined,
+        icon: CupertinoIcons.sparkles,
         title: '先扫描相册',
         subtitle: '扫描完成后即可抽取记忆盲盒',
       );
@@ -88,15 +129,21 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.cake_outlined,
-                size: 64, color: theme.colorScheme.primary),
+            Icon(CupertinoIcons.gift, size: 64, color: Ios.blue(b)),
             const SizedBox(height: 16),
-            const Text('随机翻开一段旧时光'),
+            Text('随机翻开一段旧时光',
+                style: theme.textTheme.headlineSmall),
             const SizedBox(height: 24),
-            FilledButton.icon(
+            CupertinoButton.filled(
               onPressed: _pick,
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('抽取一张'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(CupertinoIcons.sparkles, size: 18),
+                  SizedBox(width: 8),
+                  Text('抽取一张'),
+                ],
+              ),
             ),
           ],
         ),
@@ -110,7 +157,7 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
         children: [
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(Ios.radiusMedia),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -124,7 +171,7 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.black54,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
                         DateFormat('yyyy年M月d日').format(photo.createdTime),
@@ -139,10 +186,16 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
+          CupertinoButton.filled(
             onPressed: _pick,
-            icon: const Icon(Icons.refresh),
-            label: const Text('再来一个'),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(CupertinoIcons.refresh, size: 18),
+                SizedBox(width: 8),
+                Text('再来一个'),
+              ],
+            ),
           ),
           if (_count > 1)
             Padding(
@@ -150,7 +203,7 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
               child: Text(
                 '已抽取 $_count 次',
                 style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline),
+                    ?.copyWith(color: Ios.tertiaryLabel(b)),
               ),
             ),
         ],
@@ -169,7 +222,7 @@ class _TodayInHistoryTab extends ConsumerWidget {
 
     if (photos.isEmpty) {
       return const EmptyState(
-        icon: Icons.history,
+        icon: CupertinoIcons.clock,
         title: '今天没有往年照片',
         subtitle: '历史上的今天暂无照片，明天再来看看',
       );
@@ -179,8 +232,8 @@ class _TodayInHistoryTab extends ConsumerWidget {
       padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
       ),
       itemCount: photos.length,
       itemBuilder: (context, i) {
@@ -188,7 +241,9 @@ class _TodayInHistoryTab extends ConsumerWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            PhotoThumb(assetId: p.id, borderRadius: BorderRadius.circular(8)),
+            PhotoThumb(
+                assetId: p.id,
+                borderRadius: BorderRadius.circular(Ios.radiusThumb)),
             Positioned(
               left: 4,
               bottom: 4,

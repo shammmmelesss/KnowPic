@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// 空状态占位
+import '../core/ios_design.dart';
+
+/// 空状态占位（iOS 风格：灰调图标 + 层级化文案）
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -24,17 +26,18 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 64, color: theme.colorScheme.outline),
+            Icon(icon, size: 56, color: Ios.tertiaryLabel(theme.brightness)),
             const SizedBox(height: 16),
-            Text(title,
-                style: theme.textTheme.titleMedium,
-                textAlign: TextAlign.center),
+            Text(
+              title,
+              style: theme.textTheme.headlineSmall,
+              textAlign: TextAlign.center,
+            ),
             if (subtitle != null) ...[
               const SizedBox(height: 8),
               Text(
                 subtitle!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline),
+                style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
             ],

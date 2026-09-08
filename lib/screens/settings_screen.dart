@@ -1,12 +1,16 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../core/constants.dart';
+import '../core/haptics.dart';
+import '../core/ios_design.dart';
 import '../providers/providers.dart';
+import '../widgets/ios_ui.dart';
 
-/// 设置页（隐私/偏好模型管理）
+/// 设置页（隐私/偏好模型管理，iOS 分组列表样式）
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -16,105 +20,115 @@ class SettingsScreen extends ConsumerWidget {
     final permission = ref.watch(permissionControllerProvider);
     final learning = ref.watch(learningProvider);
     final model = learning.model;
+    final theme = Theme.of(context);
+    final b = theme.brightness;
+    final blue = Ios.blue(b);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: frostedAppBar(context, title: '设置'),
       body: ListView(
+        padding: const EdgeInsets.only(bottom: 32),
         children: [
-          _Section(
-            title: '相册权限',
+          CupertinoListSection.insetGrouped(
+            header: const Text('相册权限'),
+            footer: const Text(
+              '隐私承诺：所有分析均在手机本地完成，图片绝不联网上传；可随时在系统设置中改为「部分照片」访问。',
+            ),
             children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.photo_on_rectangle,
+                    color: blue, size: 24),
                 title: const Text('访问状态'),
                 subtitle: Text(permission ? '已授权' : '未授权'),
                 trailing: permission
                     ? null
-                    : FilledButton(
+                    : CupertinoButton.filled(
+                        minimumSize: const Size(44, 32),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 6),
                         onPressed: () => ref
                             .read(permissionControllerProvider.notifier)
                             .request(),
                         child: const Text('去授权'),
                       ),
               ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Text(
-                  '隐私承诺：所有分析均在手机本地完成，图片绝不联网上传；可随时在系统设置中改为"部分照片"访问。',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ),
             ],
           ),
-          _Section(
-            title: '个人偏好模型',
+          CupertinoListSection.insetGrouped(
+            header: const Text('个人偏好模型'),
             children: [
-              ListTile(
-                leading: const Icon(Icons.psychology_outlined),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.sparkles, color: blue, size: 24),
                 title: const Text('已学习样本'),
                 subtitle: Text(model.isTrained
                     ? '${model.sampleCount} 条 · ${model.resetCount == 0 ? '从未重置' : '已重置 ${model.resetCount} 次'}'
                     : '尚无样本，冷启动中（纯客观评分）'),
               ),
-              ListTile(
-                leading: const Icon(Icons.landscape_outlined),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.camera_viewfinder,
+                    color: blue, size: 24),
                 title: const Text('场景偏好'),
                 subtitle: const Text('人像/风景/截图等分别独立学习'),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const CupertinoListTileChevron(),
                 onTap: () => _showSceneDetail(context, ref),
               ),
-              ListTile(
-                leading: const Icon(Icons.update),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.clock, color: blue, size: 24),
                 title: const Text('最近更新'),
                 subtitle: Text(model.lastUpdated == null
                     ? '—'
                     : DateFormat('yyyy年M月d日 HH:mm').format(model.lastUpdated!)),
               ),
-              ListTile(
-                leading: const Icon(Icons.ios_share),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.share, color: blue, size: 24),
                 title: const Text('导出偏好'),
                 subtitle: const Text('加密偏好文件（几 KB），可自行备份迁移'),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const CupertinoListTileChevron(),
                 onTap: () => _exportPref(context, ref),
               ),
-              ListTile(
-                leading: const Icon(Icons.restart_alt),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.arrow_counterclockwise,
+                    color: Ios.red(b), size: 24),
                 title: const Text('重置偏好'),
                 subtitle: const Text('清空所有场景的学习结果，退回客观排序'),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const CupertinoListTileChevron(),
                 onTap: () => _resetPref(context, ref),
               ),
             ],
           ),
-          _Section(
-            title: '隐私与数据',
+          CupertinoListSection.insetGrouped(
+            header: const Text('隐私与数据'),
             children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.insights_outlined),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.chart_bar, color: blue, size: 24),
                 title: const Text('帮助改进产品'),
                 subtitle: const Text('仅上传脱敏统计（采纳率等），不含任何图片信息'),
-                value: settings.helpImprove,
-                onChanged: (v) =>
-                    ref.read(settingsProvider.notifier).toggleHelpImprove(v),
+                trailing: CupertinoSwitch(
+                  value: settings.helpImprove,
+                  onChanged: (v) =>
+                      ref.read(settingsProvider.notifier).toggleHelpImprove(v),
+                ),
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.shield_outlined),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.shield, color: blue, size: 24),
                 title: const Text('清理前二次确认'),
                 subtitle: const Text('默认开启，防误删'),
-                value: settings.confirmBeforeDelete,
-                onChanged: (v) => ref
-                    .read(settingsProvider.notifier)
-                    .toggleConfirmBeforeDelete(v),
+                trailing: CupertinoSwitch(
+                  value: settings.confirmBeforeDelete,
+                  onChanged: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .toggleConfirmBeforeDelete(v),
+                ),
               ),
             ],
           ),
-          _Section(
-            title: '关于',
-            children: const [
-              ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('KnowPic 智能相册整理助手'),
-                subtitle: Text('版本 1.0.0 · 全本地离线 · 隐私第一'),
+          CupertinoListSection.insetGrouped(
+            header: const Text('关于'),
+            children: [
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.info, color: blue, size: 24),
+                title: const Text('KnowPic 智能相册整理助手'),
+                subtitle: const Text('版本 1.0.0 · 全本地离线 · 隐私第一'),
               ),
             ],
           ),
@@ -125,52 +139,62 @@ class SettingsScreen extends ConsumerWidget {
 
   Future<void> _showSceneDetail(BuildContext context, WidgetRef ref) async {
     final learning = ref.read(learningProvider);
+    final theme = Theme.of(context);
+    final b = theme.brightness;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => CupertinoAlertDialog(
         title: const Text('场景偏好详情'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 340),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Text(
                   '每个场景独立学习您的审美（FTRL），互不干扰：',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                  style: theme.textTheme.bodySmall,
                 ),
-              ),
-              for (final entry in learning.models.entries) ...[
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    entry.key == AppConfig.defaultScene
-                        ? Icons.auto_awesome
-                        : Icons.photo_outlined,
-                    size: 20,
+                const SizedBox(height: 4),
+                for (final entry in learning.models.entries) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            AppConfig.sceneLabel(entry.key),
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                        Text(
+                          '${entry.value.sampleCount} 条${entry.value.isTrained ? '' : '（冷启动）'}',
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: Ios.secondaryLabel(b)),
+                        ),
+                      ],
+                    ),
                   ),
-                  title: Text(AppConfig.sceneLabel(entry.key)),
-                  trailing: Text(
-                    '${entry.value.sampleCount} 条${entry.value.isTrained ? '' : '（冷启动）'}',
-                    style: const TextStyle(fontSize: 13, color: Colors.grey),
-                  ),
-                ),
-                const Divider(height: 1),
-              ],
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text(
+                  Divider(
+                      height: 0.5,
+                      thickness: 0.5,
+                      color: Ios.separator(b)),
+                ],
+                const SizedBox(height: 8),
+                Text(
                   '全局模型汇总所有场景样本，供跨场景兜底。',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: Ios.tertiaryLabel(b)),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx),
             child: const Text('关闭'),
           ),
@@ -189,9 +213,7 @@ class SettingsScreen extends ConsumerWidget {
       ));
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败：$e')),
-        );
+        showIosToast(context, '导出失败：$e');
       }
     }
   }
@@ -199,15 +221,17 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _resetPref(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => CupertinoAlertDialog(
         title: const Text('重置偏好模型？'),
         content: const Text('将清空已学习的个人偏好，恢复为纯客观评分排序。'),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('重置'),
           ),
@@ -215,43 +239,11 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
     if (ok == true && context.mounted) {
+      Haptics.warning();
       await ref.read(learningProvider).confirmReset();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('偏好已重置')),
-        );
+        showIosToast(context, '偏好已重置', success: true);
       }
     }
-  }
-}
-
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-          child: Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12),
-          child: Column(children: children),
-        ),
-      ],
-    );
   }
 }

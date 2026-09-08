@@ -1,11 +1,14 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/ios_design.dart';
 import '../models/group_type.dart';
 import '../models/scan_report.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/ios_ui.dart';
 
 /// 清理报告页（对应文档 9.5 清理报告 / 14 空间释放可视化）
 class ReportScreen extends ConsumerStatefulWidget {
@@ -37,15 +40,15 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     final reports = ref.watch(reportsControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('清理报告')),
+      appBar: frostedAppBar(context, title: '清理报告'),
       body: reports.isEmpty
           ? const EmptyState(
-              icon: Icons.bar_chart,
+              icon: CupertinoIcons.chart_bar,
               title: '还没有清理记录',
-              subtitle: '完成一次"一键清理"后，这里会展示释放的空间',
+              subtitle: '完成一次「一键清理」后，这里会展示释放的空间',
             )
           : ListView(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               children: [
                 for (var i = 0; i < reports.length; i++)
                   Padding(
@@ -79,59 +82,54 @@ class _ReportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Card(
-      color: highlight ? cs.primaryContainer : null,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.savings_outlined,
-                    color: highlight ? cs.onPrimaryContainer : cs.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '释放 ${report.freedLabel}',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const Spacer(),
-                Text(
-                  DateFormat('M月d日 HH:mm').format(report.createdAt),
-                  style: theme.textTheme.bodySmall?.copyWith(color: cs.outline),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _Metric(label: '删除', value: '${report.deletedCount} 张'),
-                _Metric(label: '保留', value: '${report.keptCount} 张'),
-                _Metric(label: '处理组', value: '${report.groupCount} 组'),
-              ],
-            ),
-            if (report.categoryCounts.isNotEmpty) ...[
-              const Divider(height: 20),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: report.categoryCounts.entries
-                    .map((e) => Chip(
-                          label: Text(
-                            '${_typeLabels[e.key] ?? e.key.name} × ${e.value}',
-                            style: theme.textTheme.labelSmall,
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ))
-                    .toList(),
+    final b = theme.brightness;
+    return IosCard(
+      color: highlight ? Ios.blue(b).withValues(alpha: 0.10) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(CupertinoIcons.arrow_down_circle,
+                  color: Ios.green(b), size: 22),
+              const SizedBox(width: 8),
+              Text(
+                '释放 ${report.freedLabel}',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              Text(
+                DateFormat('M月d日 HH:mm').format(report.createdAt),
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: Ios.tertiaryLabel(b)),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _Metric(label: '删除', value: '${report.deletedCount} 张'),
+              _Metric(label: '保留', value: '${report.keptCount} 张'),
+              _Metric(label: '处理组', value: '${report.groupCount} 组'),
+            ],
+          ),
+          if (report.categoryCounts.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: report.categoryCounts.entries
+                  .map((e) => IosBadge(
+                        label: '${_typeLabels[e.key] ?? e.key.name} × ${e.value}',
+                        color: Ios.fill(b),
+                        fg: Ios.secondaryLabel(b),
+                        fontSize: 12,
+                      ))
+                  .toList(),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }

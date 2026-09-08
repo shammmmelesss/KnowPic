@@ -1,13 +1,15 @@
-import 'dart:async';
-
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../core/constants.dart';
+import '../core/haptics.dart';
+import '../core/ios_design.dart';
 import '../models/photo_asset.dart';
 import '../models/user_action.dart';
 import '../providers/providers.dart';
+import '../widgets/ios_ui.dart';
 import '../widgets/photo_thumb.dart';
 
 /// 相似组详情页（对应文档 9.3 核心操作流程 / 10 UI 状态机）
@@ -41,11 +43,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     final groups = ref.watch(groupsControllerProvider);
     final ranking = ref.watch(rankingProvider);
     final theme = Theme.of(context);
+    final b = theme.brightness;
 
     final group = groups.where((g) => g.groupId == widget.groupId).firstOrNull;
     if (group == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: frostedAppBar(context),
         body: const Center(child: Text('该分组已清理')),
       );
     }
@@ -72,8 +75,9 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         .fold<int>(0, (sum, m) => sum + m.byteSize);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${group.type.label}（${members.length} 张）'),
+      appBar: frostedAppBar(
+        context,
+        title: '${group.type.label}（${members.length} 张）',
       ),
       body: Column(
         children: [
@@ -82,15 +86,13 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Row(
               children: [
-                Text(
-                  '已选保留 $keepCount/${members.length} 张',
-                  style: theme.textTheme.titleSmall,
-                ),
+                Text('已选保留 $keepCount/${members.length} 张',
+                    style: theme.textTheme.titleSmall),
                 const Spacer(),
                 Text(
-                  '预计释放 ${_fmt(freedBytes)}',
+                  '预计释放 ${Ios.formatBytes(freedBytes)}',
                   style: theme.textTheme.titleSmall
-                      ?.copyWith(color: theme.colorScheme.primary),
+                      ?.copyWith(color: Ios.blue(b)),
                 ),
               ],
             ),
@@ -98,7 +100,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           // 叠图轮播
           Expanded(
             child: members.isEmpty
-                ? const Center(child: Text('暂无照片'))
+                ? Center(
+                    child: Text('暂无照片', style: theme.textTheme.bodyMedium))
                 : Stack(
                     children: [
                       PageView.builder(
@@ -116,30 +119,34 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                       ),
                       // 左右切换指示
                       Positioned(
-                        left: 8,
+                        left: 12,
                         top: 0,
                         bottom: 0,
                         child: Center(
-                          child: IconButton(
-                            icon: const Icon(Icons.chevron_left, size: 36),
-                            onPressed: _currentIndex > 0
+                          child: _OverlayCircleButton(
+                            icon: CupertinoIcons.chevron_left,
+                            enabled: _currentIndex > 0,
+                            onTap: _currentIndex > 0
                                 ? () => _controller.previousPage(
-                                    duration: const Duration(milliseconds: 200),
+                                    duration:
+                                        const Duration(milliseconds: 250),
                                     curve: Curves.easeOut)
                                 : null,
                           ),
                         ),
                       ),
                       Positioned(
-                        right: 8,
+                        right: 12,
                         top: 0,
                         bottom: 0,
                         child: Center(
-                          child: IconButton(
-                            icon: const Icon(Icons.chevron_right, size: 36),
-                            onPressed: _currentIndex < members.length - 1
+                          child: _OverlayCircleButton(
+                            icon: CupertinoIcons.chevron_right,
+                            enabled: _currentIndex < members.length - 1,
+                            onTap: _currentIndex < members.length - 1
                                 ? () => _controller.nextPage(
-                                    duration: const Duration(milliseconds: 200),
+                                    duration:
+                                        const Duration(milliseconds: 250),
                                     curve: Curves.easeOut)
                                 : null,
                           ),
@@ -150,7 +157,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           ),
           // 底部缩略图流
           SizedBox(
-            height: 84,
+            height: 88,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -159,84 +166,131 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
               itemBuilder: (context, i) {
                 final m = members[i];
                 final kept = _keepIds.contains(m.id);
+                final selected = i == _currentIndex;
                 return GestureDetector(
                   onTap: () => _controller.animateToPage(
                     i,
                     duration: const Duration(milliseconds: 250),
                     curve: Curves.easeOut,
                   ),
-                  child: Stack(
-                    children: [
-                      SizedBox(
-                        width: 56,
-                        height: 56,
-                        child: PhotoThumb(
-                          assetId: m.id,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selected
+                            ? Ios.blue(b)
+                            : Colors.transparent,
+                        width: 2,
                       ),
-                      Positioned(
-                        right: 2,
-                        bottom: 2,
-                        child: InkWell(
-                          onTap: () => _toggleKeep(m.id),
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: kept
-                                  ? Colors.redAccent
-                                  : Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              kept ? Icons.favorite : Icons.delete_outline,
-                              size: 14,
-                              color: Colors.white,
+                    ),
+                    child: Stack(
+                      children: [
+                        SizedBox(
+                          width: 60,
+                          height: 60,
+                          child: PhotoThumb(
+                            assetId: m.id,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: GestureDetector(
+                            onTap: () => _toggleKeep(m.id),
+                            child: Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: kept
+                                    ? Ios.red(b)
+                                    : Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                kept
+                                    ? CupertinoIcons.heart_fill
+                                    : CupertinoIcons.trash,
+                                size: 12,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      if (m.id == group.bestId)
-                        const Positioned(
-                          left: 2,
-                          top: 2,
-                          child: Text('👑', style: TextStyle(fontSize: 12)),
-                        ),
-                    ],
+                        if (m.id == group.bestId)
+                          Positioned(
+                            left: 2,
+                            top: 2,
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              decoration: const BoxDecoration(
+                                color: Colors.black45,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                CupertinoIcons.star_fill,
+                                size: 10,
+                                color: Ios.orange(b),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 );
               },
             ),
           ),
           // 操作栏
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() {
-                              _keepIds.addAll(members.map((m) => m.id));
-                            }),
-                    icon: const Icon(Icons.favorite_border),
-                    label: const Text('全部保留'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _busy || keepCount == members.length
-                        ? null
-                        : () => _clean(group.groupId, members),
-                    icon: const Icon(Icons.cleaning_services),
-                    label: Text(
-                      '一键清理${freedBytes > 0 ? '（${_fmt(freedBytes)}）' : ''}',
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: CupertinoButton(
+                      color: Ios.fill(b),
+                      borderRadius:
+                          BorderRadius.circular(Ios.radiusCard),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() {
+                                _keepIds.addAll(members.map((m) => m.id));
+                              }),
+                      child: Text(
+                        '全部保留',
+                        style: TextStyle(
+                          color: Ios.label(b),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: CupertinoButton.filled(
+                      borderRadius:
+                          BorderRadius.circular(Ios.radiusCard),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      onPressed: _busy || keepCount == members.length
+                          ? null
+                          : () => _clean(group.groupId, members),
+                      child: Text(
+                        '一键清理${freedBytes > 0 ? '（${Ios.formatBytes(freedBytes)}）' : ''}',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -245,6 +299,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
   }
 
   void _toggleKeep(String id) {
+    Haptics.selection();
     setState(() {
       if (_keepIds.contains(id)) {
         _keepIds.remove(id);
@@ -281,12 +336,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           type: ActionType.zoomIn,
           timestamp: DateTime.now(),
         ));
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('已记录您的偏好（放大查看）'),
-        duration: Duration(seconds: 1),
-      ));
+    if (!mounted) return;
+    showIosToast(context, '已记录您的偏好（放大查看）');
   }
 
   Future<void> _clean(String groupId, List<PhotoAsset> members) async {
@@ -301,17 +352,19 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     if (settings.confirmBeforeDelete) {
       final ok = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
+        builder: (ctx) => CupertinoAlertDialog(
           title: const Text('确认清理？'),
           content: Text(
-            '将删除 ${deletedIds.length} 张照片（释放约 ${_fmt(deletedIds.fold<int>(0, (s, id) => s + (members.firstWhere((m) => m.id == id).byteSize)))}）。\n\n已删除照片会进入回收站，保留 30 天，可随时还原。',
+            '将删除 ${deletedIds.length} 张照片（释放约 ${Ios.formatBytes(deletedIds.fold<int>(0, (s, id) => s + (members.firstWhere((m) => m.id == id).byteSize)))}）。\n\n已删除照片会进入回收站，保留 30 天，可随时还原。',
           ),
           actions: [
-            TextButton(
+            CupertinoDialogAction(
+              isDefaultAction: true,
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('取消'),
             ),
-            FilledButton(
+            CupertinoDialogAction(
+              isDestructiveAction: true,
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('确认清理'),
             ),
@@ -379,17 +432,14 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         final skipped = result.skippedIds.length;
         final message = skipped > 0
             ? '已清理，$skipped 张因云端未下载被跳过'
-            : '已释放 ${_fmt(result.freedBytes)}，可在回收站还原';
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(message)));
+            : '已释放 ${Ios.formatBytes(result.freedBytes)}，可在回收站还原';
+        showIosToast(context, message, success: true);
         Navigator.of(context).pop(result.freedBytes);
       }
     } catch (err) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('清理失败：$err')),
-        );
+        Haptics.warning();
+        showIosToast(context, '清理失败：$err');
         setState(() => _busy = false);
       }
     }
@@ -399,17 +449,19 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     final learning = ref.read(learningProvider);
     final reset = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => CupertinoAlertDialog(
         title: const Text('看起来推荐不太对？'),
         content: const Text(
           'AI 已经连续多次推荐了您不喜欢的照片。是否重置偏好模型，重新学习您的喜好？',
         ),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('继续学习'),
           ),
-          FilledButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('重置偏好'),
           ),
@@ -419,21 +471,42 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     if (reset == true) {
       await learning.confirmReset();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('偏好已重置，将重新学习您的喜好')),
-        );
+        showIosToast(context, '偏好已重置，将重新学习您的喜好');
       }
     }
   }
+}
 
-  static String _fmt(int bytes) {
-    if (bytes >= 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-    }
-    if (bytes >= 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+/// 图片上的圆形毛玻璃操作按钮
+class _OverlayCircleButton extends StatelessWidget {
+  const _OverlayCircleButton({
+    required this.icon,
+    required this.enabled,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.35,
+      child: IosPressable(
+        onTap: enabled ? onTap : null,
+        scale: 0.9,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: const BoxDecoration(
+            color: Colors.black38,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 22, color: Colors.white),
+        ),
+      ),
+    );
   }
 }
 
@@ -458,17 +531,18 @@ class _CarouselPhoto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final b = theme.brightness;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: GestureDetector(
         onDoubleTap: onZoom,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Ios.radiusMedia),
           child: Stack(
             fit: StackFit.expand,
             children: [
               PhotoThumb(assetId: asset.id, fit: BoxFit.contain),
-              // 顶部信息
+              // 顶部信息：AI 最佳徽章
               Positioned(
                 top: 8,
                 left: 8,
@@ -479,34 +553,44 @@ class _CarouselPhoto extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.amber.shade700,
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(999),
                         ),
-                        child: Text(
-                          '👑 $bestReason',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(CupertinoIcons.star_fill,
+                                size: 13, color: Ios.orange(b)),
+                            const SizedBox(width: 4),
+                            Text(
+                              bestReason!,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],
                 ),
               ),
-              // 状态角标
+              // 状态角标：保留/删除
               Positioned(
                 top: 8,
                 right: 8,
-                child: InkWell(
+                child: GestureDetector(
                   onTap: onToggleKeep,
                   child: Container(
-                    padding: const EdgeInsets.all(8),
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: kept ? Colors.redAccent : Colors.black54,
+                      color: kept ? Ios.red(b) : Colors.black54,
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      kept ? Icons.favorite : Icons.delete_outline,
+                      kept ? CupertinoIcons.heart_fill : CupertinoIcons.trash,
+                      size: 18,
                       color: Colors.white,
                     ),
                   ),
@@ -524,7 +608,7 @@ class _CarouselPhoto extends StatelessWidget {
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.black54,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
                         DateFormat('yyyy年M月d日 HH:mm').format(asset.createdTime),

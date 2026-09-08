@@ -1,10 +1,13 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/ios_design.dart';
 import '../models/photo_asset.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/group_card.dart';
+import '../widgets/ios_ui.dart';
 import 'group_detail_screen.dart';
 
 /// 相似组列表页
@@ -16,6 +19,7 @@ class GroupsScreen extends ConsumerWidget {
     final groups = ref.watch(groupsControllerProvider);
     final assets = ref.watch(assetsControllerProvider);
     final similarity = ref.watch(similarityProvider);
+    final b = Theme.of(context).brightness;
 
     final totalReclaim = groups.fold<int>(
       0,
@@ -23,49 +27,67 @@ class GroupsScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('相似组')),
-      body: groups.isEmpty
-          ? const EmptyState(
-              icon: Icons.collections_outlined,
-              title: '还没有相似组',
-              subtitle: '回到首页点击"开始扫描"，自动识别连拍、截图与重复照片',
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar.large(
+            title: const Text('相似组'),
+            backgroundColor: Colors.transparent,
+            flexibleSpace: frostedBar(context),
+          ),
+          if (groups.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: EmptyState(
+                icon: CupertinoIcons.photo_on_rectangle,
+                title: '还没有相似组',
+                subtitle: '回到首页点击「开始扫描」，自动识别连拍、截图与重复照片',
+              ),
             )
-          : ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Icon(Icons.storage_outlined,
-                            color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            '共 ${groups.length} 组相似照片，一键清理可释放约 $totalReclaim',
-                            style: Theme.of(context).textTheme.bodyMedium,
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    if (i == 0) {
+                      return IosCard(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            Icon(CupertinoIcons.photo_on_rectangle,
+                                color: Ios.blue(b), size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '共 ${groups.length} 组相似照片，一键清理可释放约 ${Ios.formatBytes(totalReclaim)}',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    final g = groups[i - 1];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _GroupCardView(
+                        groupId: g.groupId,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GroupDetailScreen(groupId: g.groupId),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                for (final g in groups)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _GroupCardView(
-                      groupId: g.groupId,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GroupDetailScreen(groupId: g.groupId),
-                        ),
                       ),
-                    ),
-                  ),
-              ],
+                    );
+                  },
+                  childCount: groups.length + 1,
+                ),
+              ),
             ),
+        ],
+      ),
     );
   }
 }

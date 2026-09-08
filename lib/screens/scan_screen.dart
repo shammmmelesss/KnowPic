@@ -1,9 +1,12 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/ios_design.dart';
 import '../models/scan_progress.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/ios_ui.dart';
 import 'groups_screen.dart';
 
 /// 扫描进度页（对应文档 9.1：绝不让用户面对空白"扫描中…"）
@@ -15,30 +18,30 @@ class ScanScreen extends ConsumerWidget {
     final progress = ref.watch(scanProgressProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('智能扫描')),
+      appBar: frostedAppBar(context, title: '智能扫描'),
       body: switch (progress.phase) {
         ScanPhase.reading => _PhaseView(
-            icon: Icons.photo_library_outlined,
+            icon: CupertinoIcons.photo_on_rectangle,
             title: '正在读取相册',
             subtitle: progress.message,
           ),
         ScanPhase.analyzing => _AnalyzeView(progress: progress),
         ScanPhase.clustering => _PhaseView(
-            icon: Icons.merge_type,
+            icon: CupertinoIcons.square_grid_2x2,
             title: '正在聚类分组',
             subtitle: '按 dHash 感知哈希识别相似照片…',
           ),
         ScanPhase.saving => _PhaseView(
-            icon: Icons.save_outlined,
+            icon: CupertinoIcons.floppy_disk,
             title: '正在保存',
             subtitle: '写入特征库与分组索引…',
           ),
         ScanPhase.done => _DoneView(progress: progress),
-        ScanPhase.failed => _FailedView(),
+        ScanPhase.failed => const _FailedView(),
         ScanPhase.idle => _PhaseView(
-            icon: Icons.search,
+            icon: CupertinoIcons.search,
             title: '准备就绪',
-            subtitle: '点击"开始扫描"即可整理相册',
+            subtitle: '点击「开始扫描」即可整理相册',
           ),
       },
     );
@@ -59,29 +62,26 @@ class _PhaseView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final b = theme.brightness;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 56, color: theme.colorScheme.primary),
+          Icon(icon, size: 56, color: Ios.blue(b)),
           const SizedBox(height: 16),
-          Text(title, style: theme.textTheme.titleLarge),
+          Text(title, style: theme.textTheme.headlineMedium),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
               subtitle,
               style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ?.copyWith(color: Ios.secondaryLabel(b)),
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 24),
-          const SizedBox(
-            width: 40,
-            height: 40,
-            child: CircularProgressIndicator(),
-          ),
+          const SizedBox(height: 28),
+          const CupertinoActivityIndicator(radius: 16),
         ],
       ),
     );
@@ -96,33 +96,33 @@ class _AnalyzeView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final b = theme.brightness;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('正在提取特征',
-                style: theme.textTheme.titleLarge),
+            Text('正在提取特征', style: theme.textTheme.headlineMedium),
             const SizedBox(height: 8),
             Text(
               '${progress.current}/${progress.total} · 流水线：缩略图 → dHash → 128 维特征 → 美学分',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: progress.fraction,
-                minHeight: 10,
+                minHeight: 8,
+                backgroundColor: Ios.fill(b),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Text(
               '${(progress.fraction * 100).toStringAsFixed(0)}%',
-              style: theme.textTheme.titleMedium,
+              style: theme.textTheme.displayLarge,
             ),
           ],
         ),
@@ -139,33 +139,41 @@ class _DoneView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final b = theme.brightness;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_circle_outline,
-                size: 64, color: theme.colorScheme.primary),
+            Icon(CupertinoIcons.check_mark_circled,
+                size: 64, color: Ios.green(b)),
             const SizedBox(height: 16),
-            Text('扫描完成', style: theme.textTheme.titleLarge),
+            Text('扫描完成', style: theme.textTheme.headlineMedium),
             const SizedBox(height: 8),
             Text(
               '耗时 ${(progress.elapsedMs / 1000).toStringAsFixed(1)} 秒，分析 ${progress.current} 张照片',
               style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ?.copyWith(color: Ios.secondaryLabel(b)),
             ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
+            const SizedBox(height: 28),
+            CupertinoButton.filled(
               onPressed: () {
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(builder: (_) => const GroupsScreen()),
                 );
               },
-              icon: const Icon(Icons.collections),
-              label: const Text('查看相似组'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(CupertinoIcons.photo_on_rectangle, size: 18),
+                  SizedBox(width: 8),
+                  Text('查看相似组'),
+                ],
+              ),
             ),
-            TextButton(
+            const SizedBox(height: 4),
+            CupertinoButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('返回首页'),
             ),
@@ -177,13 +185,15 @@ class _DoneView extends StatelessWidget {
 }
 
 class _FailedView extends StatelessWidget {
+  const _FailedView();
+
   @override
   Widget build(BuildContext context) {
     return EmptyState(
-      icon: Icons.error_outline,
+      icon: CupertinoIcons.exclamationmark_circle,
       title: '扫描失败',
       subtitle: '请检查相册权限后重试',
-      action: FilledButton(
+      action: CupertinoButton.filled(
         onPressed: () {
           Navigator.of(context).pop();
         },

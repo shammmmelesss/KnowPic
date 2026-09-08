@@ -67,15 +67,8 @@ class _PhotoThumbState extends ConsumerState<PhotoThumb> {
         filterQuality: FilterQuality.low,
       );
     } else {
-      child = Container(
-        color: colorScheme.surfaceContainerHighest,
-        alignment: Alignment.center,
-        child: const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
+      // iOS 相册风格：占位灰块，不做加载动画
+      child = Container(color: colorScheme.surfaceContainerHighest);
     }
     if (widget.borderRadius != null) {
       return ClipRRect(borderRadius: widget.borderRadius!, child: child);

@@ -1,7 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../core/ios_design.dart';
 import '../models/group_type.dart';
 import '../models/similar_group.dart';
+import 'ios_ui.dart';
 import 'photo_thumb.dart';
 
 /// 相似组卡片（分组列表项）
@@ -21,140 +24,105 @@ class GroupCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onClean;
 
-  String _formatBytes(int bytes) {
-    if (bytes >= 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-    }
-    if (bytes >= 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / 1024).toStringAsFixed(0)} KB';
-  }
-
-  IconData get _icon {
+  IconData _icon(Brightness b) {
     switch (group.type) {
       case GroupType.burst:
-        return Icons.camera_alt;
+        return CupertinoIcons.camera_fill;
       case GroupType.editHistory:
-        return Icons.tune;
+        return CupertinoIcons.slider_horizontal_3;
       case GroupType.screenshot:
-        return Icons.screenshot_monitor;
+        return CupertinoIcons.crop;
       case GroupType.duplicate:
-        return Icons.content_copy;
+        return CupertinoIcons.doc_on_doc;
       case GroupType.longShot:
-        return Icons.landscape;
+        return CupertinoIcons.rectangle_on_rectangle;
       case GroupType.mixed:
-        return Icons.collections;
+        return CupertinoIcons.photo_on_rectangle;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final b = theme.brightness;
     final previews = memberIds.take(3).toList();
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              // 叠图缩略图
-              SizedBox(
-                width: 88,
-                height: 88,
-                child: Stack(
+    return IosCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          // 叠图缩略图
+          SizedBox(
+            width: 88,
+            height: 88,
+            child: Stack(
+              children: [
+                for (var i = previews.length - 1; i >= 0; i--)
+                  Positioned(
+                    left: i * 6.0,
+                    top: i * 6.0,
+                    child: SizedBox(
+                      width: 76,
+                      height: 76,
+                      child: PhotoThumb(
+                        assetId: previews[i],
+                        borderRadius:
+                            BorderRadius.circular(Ios.radiusThumb),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    for (var i = previews.length - 1; i >= 0; i--)
-                      Positioned(
-                        left: i * 6.0,
-                        top: i * 6.0,
-                        child: SizedBox(
-                          width: 76,
-                          height: 76,
-                          child: PhotoThumb(
-                            assetId: previews[i],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                    Icon(_icon(b), size: 17, color: Ios.blue(b)),
+                    const SizedBox(width: 5),
+                    Text(group.type.label, style: theme.textTheme.titleSmall),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${group.size} 张 · ${Ios.formatBytes(group.totalBytes)}',
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    IosBadge(
+                      label: '可释放 ${Ios.formatBytes(reclaimableBytes)}',
+                      color: Ios.blue(b).withValues(alpha: 0.12),
+                      fg: Ios.blue(b),
+                    ),
+                    if (group.bestId.isNotEmpty)
+                      IosBadge(
+                        label: 'AI 最佳',
+                        icon: CupertinoIcons.star_fill,
+                        color: Ios.orange(b).withValues(alpha: 0.15),
+                        fg: Ios.orange(b),
                       ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(_icon, size: 18, color: colorScheme.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          group.type.label,
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${group.size} 张 · ${_formatBytes(group.totalBytes)}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: colorScheme.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '可释放 ${_formatBytes(reclaimableBytes)}',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (group.bestId.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: colorScheme.tertiaryContainer,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '👑 AI 最佳',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onTertiaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (onClean != null)
-                IconButton(
-                  onPressed: onClean,
-                  icon: const Icon(Icons.cleaning_services_outlined),
-                  tooltip: '一键清理',
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
+          if (onClean != null)
+            CupertinoButton(
+              minimumSize: const Size(44, 44),
+              padding: const EdgeInsets.all(6),
+              onPressed: onClean,
+              child: Icon(CupertinoIcons.wand_stars,
+                  size: 22, color: Ios.blue(b)),
+            ),
+        ],
       ),
     );
   }

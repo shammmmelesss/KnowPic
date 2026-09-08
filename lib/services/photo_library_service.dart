@@ -11,6 +11,9 @@ import '../models/photo_asset.dart';
 abstract class PhotoLibraryService {
   Future<bool> requestPermission();
 
+  /// 只读检查当前系统授权状态（不弹系统窗，用于冷启动恢复）
+  Future<bool> checkPermission();
+
   bool get hasPermission;
 
   /// 加载全部图片资产（仅元数据，不加载像素）。
@@ -39,6 +42,16 @@ class PhotoManagerLibrary implements PhotoLibraryService {
     final state = await PhotoManager.requestPermissionExtend();
     _granted = state == PermissionState.authorized || state == PermissionState.limited;
     Log.d('PhotoLibrary', 'permission=$state granted=$_granted');
+    return _granted;
+  }
+
+  @override
+  Future<bool> checkPermission() async {
+    final state = await PhotoManager.getPermissionState(
+      requestOption: const PermissionRequestOption(),
+    );
+    _granted = state == PermissionState.authorized || state == PermissionState.limited;
+    Log.d('PhotoLibrary', 'checkPermission=$state granted=$_granted');
     return _granted;
   }
 

@@ -94,7 +94,28 @@ final permissionControllerProvider =
 
 class PermissionController extends Notifier<bool> {
   @override
-  bool build() => ref.watch(libraryProvider).hasPermission;
+  bool build() {
+    // 冷启动恢复真实授权状态（文档 9.1：3 秒内看到内容）。
+    // 先静默检查当前授权：系统已记住授权则直接恢复，无需任何交互；
+    // 未授权时：首次使用等待用户点击授权卡片（避免启动即弹系统窗），
+    // 有历史数据（此前授权使用过）才主动请求恢复。
+    () async {
+      try {
+        final lib = ref.read(libraryProvider);
+        var ok = await lib.checkPermission();
+        if (!ok) {
+          final store = ref.read(storeProvider);
+          if (store.assets.isEmpty) return; // 首次使用：等待用户主动授权
+          ok = await lib.requestPermission();
+        }
+        if (ok && !state) {
+          state = true;
+          ref.invalidate(recentPhotosProvider);
+        }
+      } catch (_) {}
+    }();
+    return ref.watch(libraryProvider).hasPermission;
+  }
 
   Future<bool> request() async {
     final ok = await ref.read(libraryProvider).requestPermission();
