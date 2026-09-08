@@ -49,7 +49,7 @@ class HomeScreen extends ConsumerWidget {
                 SliverAppBar.large(
                   title: const Text('KnowPic'),
                   backgroundColor: Colors.transparent,
-                  flexibleSpace: frostedBar(context),
+                  flexibleSpace: frostedLargeTitleBar(context, title: 'KnowPic'),
                   actions: [
                     IconButton(
                       icon: const Icon(CupertinoIcons.gear_alt),

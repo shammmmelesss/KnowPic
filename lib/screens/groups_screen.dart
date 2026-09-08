@@ -32,7 +32,7 @@ class GroupsScreen extends ConsumerWidget {
           SliverAppBar.large(
             title: const Text('相似组'),
             backgroundColor: Colors.transparent,
-            flexibleSpace: frostedBar(context),
+            flexibleSpace: frostedLargeTitleBar(context, title: '相似组'),
           ),
           if (groups.isEmpty)
             const SliverFillRemaining(

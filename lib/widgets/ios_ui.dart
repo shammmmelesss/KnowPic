@@ -36,6 +36,45 @@ PreferredSizeWidget frostedAppBar(
   );
 }
 
+/// 毛玻璃大标题 flexibleSpace（用于 SliverAppBar.large）。
+/// 复刻 M3 _ScrollUnderFlexibleSpace 的标题结构（随滚动上移裁切、
+/// 收起时 toolbar 标题淡入），并叠加 iOS 模糊材质。
+Widget frostedLargeTitleBar(BuildContext context, {required String title}) {
+  return ClipRect(
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+      child: Builder(
+        builder: (context) {
+          final settings = context
+              .dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>()!;
+          final style = Theme.of(context).textTheme.titleLarge;
+          return Column(
+            children: [
+              Padding(padding: EdgeInsets.only(top: settings.minExtent)),
+              Flexible(
+                child: ClipRect(
+                  child: Align(
+                    alignment: AlignmentDirectional.bottomStart,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+                      child: DefaultTextStyle(
+                        style: style ?? const TextStyle(fontSize: 34),
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        child: Text(title),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+}
+
 /// 底部浮层提示（iOS 深色胶囊样式，替代 Material SnackBar）
 void showIosToast(
   BuildContext context,
