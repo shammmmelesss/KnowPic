@@ -59,7 +59,10 @@ class AppSettings {
   }
 
   Future<void> save(Directory rootDir) async {
+    // 原子写（.tmp → rename），避免写一半崩溃损坏设置文件
     final f = File('${rootDir.path}/${AppConfig.rootDirName}/${AppConfig.settingsFile}');
-    await f.writeAsString(jsonEncode(toJson()), flush: true);
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(jsonEncode(toJson()), flush: true);
+    await tmp.rename(f.path);
   }
 }

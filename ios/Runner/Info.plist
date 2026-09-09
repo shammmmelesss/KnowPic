@@ -30,6 +30,8 @@
 	<string>KnowPic 需要访问您的相册，用于智能整理相似照片、生成清理建议。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>从回收站还原照片时需要写入系统相册。</string>
+	<key>NSFileProtectionKey</key>
+	<string>NSFileProtectionComplete</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

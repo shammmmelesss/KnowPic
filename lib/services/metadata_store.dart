@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../core/constants.dart';
@@ -43,6 +44,29 @@ class MetadataStore {
   /// 偏好模型文件（导出用）
   File get prefFile => File(_prefPath);
 
+  /// 大 JSON 数组文件超过此大小即在隔离区解码，避免阻塞冷启动 UI
+  static const int _jsonIsolateThreshold = 256 * 1024;
+
+  /// 读取 JSON 数组文件（不存在返回 null）；大文件在隔离区 utf8 解码 + jsonDecode
+  Future<List<Map<String, dynamic>>?> _readJsonList(String path) async {
+    final f = File(path);
+    if (!await f.exists()) return null;
+    try {
+      final bytes = await f.readAsBytes();
+      if (bytes.length < _jsonIsolateThreshold) {
+        return (jsonDecode(utf8.decode(bytes)) as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+      }
+      return await Isolate.run(
+        () => (jsonDecode(utf8.decode(bytes)) as List<dynamic>)
+            .cast<Map<String, dynamic>>(),
+      );
+    } catch (err) {
+      Log.e('Store', 'read json failed: $path', err);
+      return null;
+    }
+  }
+
   /// 初始化目录并加载所有持久化数据
   Future<void> init() async {
     if (!await metaDir.exists()) await metaDir.create(recursive: true);
@@ -60,12 +84,11 @@ class MetadataStore {
   // ---- 资产 ----
 
   Future<void> _loadAssets() async {
-    final f = File(_assetsPath);
-    if (!await f.exists()) return;
+    final raw = await _readJsonList(_assetsPath);
+    if (raw == null) return;
     try {
-      final list = jsonDecode(await f.readAsString()) as List<dynamic>;
-      for (final e in list) {
-        final a = PhotoAsset.fromJson(e as Map<String, dynamic>);
+      for (final e in raw) {
+        final a = PhotoAsset.fromJson(e);
         assets[a.id] = a;
       }
       await _loadFeatures();
@@ -79,40 +102,80 @@ class MetadataStore {
     if (!await f.exists()) return;
     final data = await f.readAsBytes();
     final dim = AppConfig.featureDim;
-    final count = data.length ~/ (dim * 4);
+    final rowBytes = dim * 4;
+    final count = data.length ~/ rowBytes;
     if (count == 0) return;
     final sortedIds = assets.keys.toList()..sort();
-    for (int i = 0; i < count && i < sortedIds.length; i++) {
+    // 配对守卫：特征行数必须与资产数一致，且文件没有截断（字节数足够覆盖所有行），
+    // 否则按 id 排序配对会整体错位或 sublistView 越界
+    // （正常由原子写保证；不一致说明文件损坏/半写，放弃配对等下次扫描重建）
+    if (count != sortedIds.length || data.length < count * rowBytes) {
+      Log.e('Store',
+          'features.bin rows($count)!=assets(${sortedIds.length}) or '
+          'truncated(${data.length} bytes), skip pairing');
+      return;
+    }
+    for (int i = 0; i < count; i++) {
       final slice = Float32List.sublistView(
           data, i * dim * 4, (i + 1) * dim * 4);
       assets[sortedIds[i]]!.features = slice;
     }
   }
 
-  /// 全量保存资产 + 特征（简单可靠的全量重写）
+  /// 全量保存资产 + 特征（原子写：.tmp → rename，避免半写损坏）
   Future<void> saveAssets() async {
     final sorted = assets.values.toList()
       ..sort((a, b) => a.id.compareTo(b.id));
-    await File(_assetsPath).writeAsString(
-      jsonEncode(sorted.map((a) => a.toJson()).toList()),
-      flush: true,
-    );
-    // 特征二进制：float32 小端
-    final total = sorted.length * AppConfig.featureDim;
-    if (total == 0) {
-      await File(_featuresPath).writeAsBytes(const []);
-      return;
-    }
-    final bytes = ByteData(total * 4);
-    var offset = 0;
-    for (final a in sorted) {
-      for (final v in a.features) {
-        bytes.setFloat32(offset, v, Endian.little);
-        offset += 4;
-      }
-    }
-    await File(_featuresPath).writeAsBytes(bytes.buffer.asUint8List(), flush: true);
+    // 先在主隔离区做轻量映射（避免发送复杂对象），重活（jsonEncode + float 编码）放隔离区
+    final jsonMaps = sorted.map((a) => a.toJson()).toList();
+    final featureLists = sorted.map((a) => a.features).toList();
+
+    final (jsonBytes, featureBytes) =
+        sorted.length >= AppConfig.storeIsolateThreshold
+            ? await Isolate.run(() => _encodeAssetsPayload(jsonMaps, featureLists))
+            : _encodeAssetsPayload(jsonMaps, featureLists);
+    await _atomicWrite(_assetsPath, jsonBytes);
+    await _atomicWrite(_featuresPath, featureBytes);
   }
+
+  /// 编码资产 JSON 与特征二进制（float32 小端）。纯函数，可在隔离区运行。
+  static (Uint8List, Uint8List) _encodeAssetsPayload(
+    List<Map<String, dynamic>> jsonMaps,
+    List<Float32List> featureLists,
+  ) {
+    final jsonBytes = utf8.encode(jsonEncode(jsonMaps));
+    final dim = AppConfig.featureDim;
+    final out = Float32List(jsonMaps.length * dim);
+    var offset = 0;
+    for (final f in featureLists) {
+      final n = f.length < dim ? f.length : dim;
+      if (n > 0) out.setRange(offset, offset + n, f);
+      offset += dim;
+    }
+    // Flutter 目标平台均为小端，直接按内存布局导出；大端环境退回逐值编码
+    final featureBytes = Endian.host == Endian.little
+        ? out.buffer.asUint8List()
+        : _float32ToLittleEndianBytes(out);
+    return (jsonBytes, featureBytes);
+  }
+
+  static Uint8List _float32ToLittleEndianBytes(Float32List values) {
+    final bd = ByteData(values.length * 4);
+    for (var i = 0; i < values.length; i++) {
+      bd.setFloat32(i * 4, values[i], Endian.little);
+    }
+    return bd.buffer.asUint8List();
+  }
+
+  /// 原子写入：先写同目录 .tmp 并 flush，再 rename 覆盖目标文件
+  Future<void> _atomicWrite(String path, List<int> bytes) async {
+    final tmp = File('$path.tmp');
+    await tmp.writeAsBytes(bytes, flush: true);
+    await tmp.rename(path);
+  }
+
+  Future<void> _atomicWriteString(String path, String data) =>
+      _atomicWrite(path, utf8.encode(data));
 
   /// 替换全部资产与分组（扫描完成后调用）
   Future<void> replaceAll(List<PhotoAsset> newAssets, List<SimilarGroup> newGroups) async {
@@ -131,20 +194,19 @@ class MetadataStore {
   // ---- 分组 ----
 
   Future<void> _loadGroups() async {
-    final f = File(_groupsPath);
-    if (!await f.exists()) return;
+    final raw = await _readJsonList(_groupsPath);
+    if (raw == null) return;
     try {
-      final list = jsonDecode(await f.readAsString()) as List<dynamic>;
-      groups.addAll(list.map((e) => SimilarGroup.fromJson(e as Map<String, dynamic>)));
+      groups.addAll(raw.map(SimilarGroup.fromJson));
     } catch (err) {
       Log.e('Store', 'load groups failed', err);
     }
   }
 
   Future<void> saveGroups() async {
-    await File(_groupsPath).writeAsString(
+    await _atomicWriteString(
+      _groupsPath,
       jsonEncode(groups.map((g) => g.toJson()).toList()),
-      flush: true,
     );
   }
 
@@ -181,53 +243,60 @@ class MetadataStore {
   }
 
   Future<void> savePref() async {
-    await File(_prefPath).writeAsString(
+    await _atomicWriteString(
+      _prefPath,
       jsonEncode({
         'scenes': preferences.map((k, v) => MapEntry(k, v.toJson())),
       }),
-      flush: true,
     );
   }
 
   // ---- 回收站 ----
 
   Future<void> _loadTrash() async {
-    final f = File(_trashManifestPath);
-    if (!await f.exists()) return;
+    final raw = await _readJsonList(_trashManifestPath);
+    if (raw == null) return;
     try {
-      final list = jsonDecode(await f.readAsString()) as List<dynamic>;
-      trashItems.addAll(list.map((e) => TrashItem.fromJson(e as Map<String, dynamic>)));
+      trashItems.addAll(raw.map(TrashItem.fromJson));
     } catch (err) {
       Log.e('Store', 'load trash failed', err);
     }
   }
 
   Future<void> saveTrash() async {
-    await File(_trashManifestPath).writeAsString(
+    await _atomicWriteString(
+      _trashManifestPath,
       jsonEncode(trashItems.map((t) => t.toJson()).toList()),
-      flush: true,
     );
   }
 
-  File trashFileOf(TrashItem item) => File('${trashDir.path}/${item.savedFileName}');
+  /// 回收站备份文件路径。
+  /// 文件名来自 manifest.json（可能被篡改/损坏），这里强制消毒为纯文件名防路径穿越。
+  File trashFileOf(TrashItem item) {
+    var name = item.savedFileName
+        .replaceAll('/', '')
+        .replaceAll(r'\', '')
+        .replaceAll('..', '');
+    if (name.isEmpty || name == '.' ) name = 'orphan.bin';
+    return File('${trashDir.path}/$name');
+  }
 
   // ---- 报告 ----
 
   Future<void> _loadReports() async {
-    final f = File(_reportsPath);
-    if (!await f.exists()) return;
+    final raw = await _readJsonList(_reportsPath);
+    if (raw == null) return;
     try {
-      final list = jsonDecode(await f.readAsString()) as List<dynamic>;
-      reports.addAll(list.map((e) => CleanReport.fromJson(e as Map<String, dynamic>)));
+      reports.addAll(raw.map(CleanReport.fromJson));
     } catch (err) {
       Log.e('Store', 'load reports failed', err);
     }
   }
 
   Future<void> saveReports() async {
-    await File(_reportsPath).writeAsString(
+    await _atomicWriteString(
+      _reportsPath,
       jsonEncode(reports.map((r) => r.toJson()).toList()),
-      flush: true,
     );
   }
 }

@@ -27,14 +27,18 @@ class PhotoThumb extends ConsumerStatefulWidget {
 }
 
 class _PhotoThumbState extends ConsumerState<PhotoThumb> {
-  static final Map<String, Uint8List> _cache = {};
+  /// LRU 内存缓存（上限 256 张 ≈ 10MB），避免大图库无限增长
+  static final _cache = _LruCache<String, Uint8List>(256);
+
+  /// 并发去重：同一资产只发起一次加载
+  static final _inflight = <String, Future<Uint8List?>>{};
+
   Uint8List? _bytes;
-  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    final cached = _cache[widget.assetId];
+    final cached = _cache.get(widget.assetId);
     if (cached != null) {
       _bytes = cached;
     } else {
@@ -43,16 +47,23 @@ class _PhotoThumbState extends ConsumerState<PhotoThumb> {
   }
 
   Future<void> _load() async {
-    if (_loading) return;
-    _loading = true;
-    final bytes = await ref.read(libraryProvider).loadThumbnail(widget.assetId);
-    if (bytes != null) {
-      _cache[widget.assetId] = bytes;
+    // 已有相同资产的加载在进行中 → 复用
+    final existing = _inflight[widget.assetId];
+    if (existing != null) {
+      final bytes = await existing;
+      if (mounted) setState(() => _bytes = bytes);
+      return;
     }
-    if (mounted) {
-      setState(() => _bytes = bytes);
-    }
-    _loading = false;
+    final future = ref
+        .read(libraryProvider)
+        .loadThumbnail(widget.assetId)
+        .then((bytes) {
+      if (bytes != null) _cache.put(widget.assetId, bytes);
+      return bytes;
+    }).whenComplete(() => _inflight.remove(widget.assetId));
+    _inflight[widget.assetId] = future;
+    final bytes = await future;
+    if (mounted) setState(() => _bytes = bytes);
   }
 
   @override
@@ -74,5 +85,27 @@ class _PhotoThumbState extends ConsumerState<PhotoThumb> {
       return ClipRRect(borderRadius: widget.borderRadius!, child: child);
     }
     return child;
+  }
+}
+
+/// 极简 LRU：LinkedHashMap 保持插入序，命中即重新插入，超限淘汰最旧项
+class _LruCache<K, V> {
+  _LruCache(this.maxSize) : assert(maxSize > 0);
+
+  final int maxSize;
+  final _map = <K, V>{};
+
+  V? get(K key) {
+    final v = _map.remove(key);
+    if (v != null) _map[key] = v; // 重新插入 → 移到"最新"端
+    return v;
+  }
+
+  void put(K key, V value) {
+    _map.remove(key);
+    _map[key] = value;
+    while (_map.length > maxSize) {
+      _map.remove(_map.keys.first);
+    }
   }
 }

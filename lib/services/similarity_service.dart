@@ -45,9 +45,9 @@ class SimilarityService {
 
   /// 并查集聚类，返回成员 id 列表的列表
   List<List<String>> _cluster(List<PhotoAsset> assets) {
-    final ids = assets.map((a) => a.id).toList();
-    final n = ids.length;
+    final n = assets.length;
     if (n == 0) return const [];
+    final ids = assets.map((a) => a.id).toList();
 
     final parent = List<int>.generate(n, (i) => i);
     int find(int i) {
@@ -64,17 +64,31 @@ class SimilarityService {
       if (ra != rb) parent[ra] = rb;
     }
 
-    for (int i = 0; i < n; i++) {
+    // 预构建热点值：宽高比/长图标记/哈希均为 getter 或需重复计算，内层循环逐对调用代价高
+    final aspects = List<double>.filled(n, 0);
+    final longShots = List<bool>.filled(n, false);
+    final hashes = List<int>.filled(n, 0);
+    final sizes = List<int>.filled(n, 0);
+    for (var i = 0; i < n; i++) {
       final a = assets[i];
+      aspects[i] = a.aspectRatio;
+      longShots[i] = a.isLongShot;
+      hashes[i] = a.dHash;
+      sizes[i] = a.byteSize;
+    }
+
+    for (int i = 0; i < n; i++) {
+      final ra = aspects[i];
+      final li = longShots[i];
+      final hi = hashes[i];
+      final si = sizes[i];
       for (int j = i + 1; j < n; j++) {
-        final b = assets[j];
         // 快速预过滤：宽高比不兼容（且非长图）或大小差异过大 → 不可能相似
-        if (!_aspectCompatible(a, b)) continue;
-        if ((a.byteSize - b.byteSize).abs() > a.byteSize * 0.6 + b.byteSize * 0.6) {
-          continue;
-        }
-        final d = PerceptualHash.hammingDistance(a.dHash, b.dHash);
-        if (d <= AppConfig.hammingThresholdGroup) {
+        if (!li && !longShots[j] && (ra - aspects[j]).abs() > 0.25) continue;
+        final sj = sizes[j];
+        if ((si - sj).abs() > si * 0.6 + sj * 0.6) continue;
+        if (PerceptualHash.hammingDistance(hi, hashes[j]) <=
+            AppConfig.hammingThresholdGroup) {
           union(i, j);
         }
       }
@@ -85,13 +99,6 @@ class SimilarityService {
       byRoot.putIfAbsent(find(i), () => []).add(ids[i]);
     }
     return byRoot.values.toList();
-  }
-
-  bool _aspectCompatible(PhotoAsset a, PhotoAsset b) {
-    if (a.isLongShot || b.isLongShot) return true; // 长图特殊处理（降低比对敏感度）
-    final ra = a.aspectRatio;
-    final rb = b.aspectRatio;
-    return (ra - rb).abs() <= 0.25;
   }
 
   /// 组类型启发式分类

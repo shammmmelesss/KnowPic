@@ -10,6 +10,7 @@ import '../core/utils/dhash.dart';
 import '../core/utils/image_features.dart';
 import '../models/photo_asset.dart';
 import '../models/scan_progress.dart';
+import '../models/similar_group.dart';
 import 'metadata_store.dart';
 import 'photo_library_service.dart';
 import 'ranking_service.dart';
@@ -87,14 +88,22 @@ class ScannerService {
           : photos;
 
       final merged = <String, PhotoAsset>{};
-      if (incremental) {
-        // 保留已有资产及其特征
-        merged.addEntries(_store.assets.entries);
-        for (final p in photos) {
-          merged[p.id] = p; // 刷新元数据（可能已变更）
-        }
-      } else {
-        for (final p in photos) {
+      for (final p in photos) {
+        final existing = _store.assets[p.id];
+        if (existing != null && existing.dHash != 0) {
+          // 保留已分析的资产（增量扫描只分析新增，旧特征不能丢）
+          merged[p.id] = p.copyWith(
+            dHash: existing.dHash,
+            features: existing.features,
+            baseScore: existing.baseScore,
+            sceneType: existing.sceneType,
+            finalScore: existing.finalScore,
+            faceCount: existing.faceCount,
+            eyeOpenScore: existing.eyeOpenScore,
+            smileScore: existing.smileScore,
+            decisiveScore: existing.decisiveScore,
+          );
+        } else {
           merged[p.id] = p;
         }
       }
@@ -108,7 +117,10 @@ class ScannerService {
         var done = 0;
         for (final batch in _chunks(toAnalyze, AppConfig.batchSize)) {
           final thumbnails = await Future.wait(
-            batch.map((p) => _library.loadThumbnail(p.id)),
+            batch.map((p) => _library.loadThumbnail(
+                  p.id,
+                  size: AppConfig.thumbnailSize, // 分析只需 256，4× 解码开销
+                )),
           );
           final validBytes = <Uint8List>[];
           final validPhotos = <PhotoAsset>[];
@@ -143,7 +155,14 @@ class ScannerService {
 
       progress.value = const ScanProgress(phase: ScanPhase.clustering, message: '正在聚类分组…');
       final allAssets = merged.values.toList();
-      final groups = _similarity.clusterAndClassify(allAssets);
+      // 聚类为 O(n²) CPU 密集操作，放隔离区避免阻塞 UI
+      List<SimilarGroup> groups;
+      try {
+        groups = await Isolate.run(() => _similarity.clusterAndClassify(allAssets));
+      } catch (err) {
+        Log.e('Scanner', 'isolate cluster failed, fallback to main isolate', err);
+        groups = _similarity.clusterAndClassify(allAssets);
+      }
 
       // AI 推荐：每组选出"最佳"并计算综合分
       final byId = merged;

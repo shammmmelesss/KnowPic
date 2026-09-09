@@ -19,6 +19,10 @@ class AppConfig {
   static const int featureDim = 128; // 特征向量维度
   static const int batchSize = 8; // 批量推理并发数
   static const int scanPageSize = 300; // 相册分页大小
+  static const int scanProbeConcurrency = 32; // 本地可用性探测并发数（平台通道调用，串行太慢）
+
+  // ---- 持久化 ----
+  static const int storeIsolateThreshold = 1000; // 资产数超过此值时在隔离区编码持久化数据
 
   // ---- 相似度阈值（汉明距离）----
   static const int hammingThresholdGroup = 12; // 聚类聚合阈值

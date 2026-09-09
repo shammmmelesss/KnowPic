@@ -130,8 +130,9 @@ class PermissionController extends Notifier<bool> {
 /// 最近 30 天照片（首页冷启动展示，文档 9.1）
 final recentPhotosProvider = FutureProvider<List<PhotoAsset>>((ref) async {
   final lib = ref.watch(libraryProvider);
-  final photos = await lib.loadAllPhotos();
   final cutoff = DateTime.now().subtract(const Duration(days: 30));
+  // 传入时间下界：服务端按倒序分页早停，避免为首页卡片探测整个相册
+  final photos = await lib.loadAllPhotos(newerThan: cutoff);
   final recent =
       photos.where((p) => p.createdTime.isAfter(cutoff)).toList()
         ..sort((a, b) => b.createdTime.compareTo(a.createdTime));

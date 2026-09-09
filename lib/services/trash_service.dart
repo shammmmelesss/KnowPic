@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import '../core/constants.dart';
 import '../core/logger.dart';
 import '../models/photo_asset.dart';
@@ -37,27 +35,28 @@ class TrashService {
   ) async {
     final trashed = <TrashItem>[];
     final skipped = <String>[];
+    final skippedSet = <String>{};
     var freed = 0;
 
     for (final id in ids) {
       final asset = byId[id];
       if (asset == null) {
         skipped.add(id);
+        skippedSet.add(id);
         continue;
       }
       // 云占位符等无法取回原图 → 跳过并提示（文档 12.1）
       final bytes = await _library.loadOriginalBytes(id);
       if (bytes == null || bytes.isEmpty) {
         skipped.add(id);
+        skippedSet.add(id);
         Log.d('Trash', 'skip $id (no local data)');
         continue;
       }
       final ext = _safeExt(asset.title);
-      final fileName = '${id}_${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final file = File('${_store.trashDir.path}/$fileName');
-      await file.writeAsBytes(bytes, flush: true);
+      final fileName = '${_safeId(id)}_${DateTime.now().millisecondsSinceEpoch}.$ext';
       final deletedAt = DateTime.now();
-      trashed.add(TrashItem(
+      final item = TrashItem(
         id: id,
         originalTitle: asset.title.isEmpty ? fileName : asset.title,
         savedFileName: fileName,
@@ -65,22 +64,25 @@ class TrashService {
         deletedAt: deletedAt,
         expiresAt: deletedAt.add(const Duration(days: AppConfig.trashRetentionDays)),
         isLivePhoto: asset.isLivePhoto,
-      ));
+      );
+      // 写入路径统一走 trashFileOf（内部做文件名消毒，防路径穿越）
+      await _store.trashFileOf(item).writeAsBytes(bytes, flush: true);
+      trashed.add(item);
       freed += bytes.length;
     }
 
-    final toDelete = ids.where((id) => !skipped.contains(id)).toList();
+    final toDelete = ids.where((id) => !skippedSet.contains(id)).toList();
     final failed = await _library.deleteAssets(toDelete);
 
     // 系统删除失败的：撤回收回站备份
+    final trashedById = {for (final t in trashed) t.id: t};
     for (final id in failed) {
-      final item = _findTrash(id);
-      if (item != null) {
-        final f = _store.trashFileOf(item);
-        if (await f.exists()) await f.delete();
-        trashed.remove(item);
-        freed -= item.byteSize;
-      }
+      final item = trashedById[id];
+      if (item == null) continue;
+      final f = _store.trashFileOf(item);
+      if (await f.exists()) await f.delete();
+      trashed.remove(item);
+      freed -= item.byteSize;
     }
 
     _store.trashItems.addAll(trashed);
@@ -97,9 +99,10 @@ class TrashService {
 
   /// 还原：写回系统相册 → 删除本地备份
   Future<List<String>> restore(List<String> ids) async {
+    final byId = {for (final t in _store.trashItems) t.id: t};
     final restored = <String>[];
     for (final id in ids) {
-      final item = _findTrash(id);
+      final item = byId[id];
       if (item == null) continue;
       final file = _store.trashFileOf(item);
       if (!await file.exists()) {
@@ -108,7 +111,8 @@ class TrashService {
       }
       try {
         final bytes = await file.readAsBytes();
-        final filename = '${_baseName(item.originalTitle)}.jpg';
+        // 还原为备份时的真实扩展名（而非硬编码 .jpg）
+        final filename = '${_baseName(item.originalTitle)}${_extOf(item.savedFileName)}';
         await _library.saveImageToAlbum(bytes, filename: filename, title: item.originalTitle);
         await file.delete();
         _store.trashItems.remove(item);
@@ -123,9 +127,10 @@ class TrashService {
 
   /// 彻底删除（立即物理删除，不过回收站）
   Future<List<String>> permanentDelete(List<String> ids) async {
+    final byId = {for (final t in _store.trashItems) t.id: t};
     final removed = <String>[];
     for (final id in ids) {
-      final item = _findTrash(id);
+      final item = byId[id];
       if (item == null) continue;
       final f = _store.trashFileOf(item);
       if (await f.exists()) await f.delete();
@@ -150,11 +155,10 @@ class TrashService {
     return expired.length;
   }
 
-  TrashItem? _findTrash(String id) {
-    for (final t in _store.trashItems) {
-      if (t.id == id) return t;
-    }
-    return null;
+  /// 资产 id 仅保留安全字符，避免拼进文件名后产生路径穿越
+  String _safeId(String id) {
+    final s = id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return s.isEmpty ? 'a' : s;
   }
 
   String _safeExt(String title) {
@@ -166,9 +170,20 @@ class TrashService {
     return 'jpg';
   }
 
+  /// 从备份文件名提取扩展名（带点），校验失败时兜底 .jpg
+  String _extOf(String fileName) {
+    final dot = fileName.lastIndexOf('.');
+    if (dot < 0 || dot == fileName.length - 1) return '.jpg';
+    final ext = fileName.substring(dot + 1).toLowerCase();
+    return RegExp(r'^[a-z0-9]{2,5}$').hasMatch(ext) ? '.$ext' : '.jpg';
+  }
+
+  /// 还原文件名基础部分：剔除路径分隔符与扩展名，防注入
   String _baseName(String title) {
-    final dot = title.lastIndexOf('.');
-    if (dot > 0) return title.substring(0, dot);
-    return title.isEmpty ? 'restored' : title;
+    var t = title.replaceAll(RegExp(r'[/\\]'), '_').trim();
+    if (t.isEmpty) return 'restored';
+    final dot = t.lastIndexOf('.');
+    if (dot > 0) return t.substring(0, dot);
+    return t;
   }
 }
