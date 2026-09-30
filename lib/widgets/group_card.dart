@@ -60,6 +60,7 @@ class GroupCard extends StatelessWidget {
               children: [
                 for (var i = previews.length - 1; i >= 0; i--)
                   Positioned(
+                    key: ValueKey('preview_${previews[i]}'),
                     left: i * 6.0,
                     top: i * 6.0,
                     child: SizedBox(

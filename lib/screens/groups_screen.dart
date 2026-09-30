@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ios_design.dart';
-import '../models/photo_asset.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/group_card.dart';
@@ -69,15 +68,25 @@ class GroupsScreen extends ConsumerWidget {
                       );
                     }
                     final g = groups[i - 1];
+                    // 成员与可释放空间在此解析：原实现让每张卡片各自 watch 整个分组
+                    // 列表再线性查找，是 O(n²) 且任何变更都会重建全部卡片
+                    final memberIds = g.assetIds
+                        .where((id) => assets.containsKey(id))
+                        .toList();
                     return Padding(
-                      key: ValueKey('group_card_${i - 1}'),
+                      // 用 groupId 作 Key：用索引会让清理后新增/删除的组错位复用
+                      key: ValueKey(g.groupId),
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: _GroupCardView(
-                        groupId: g.groupId,
+                      child: GroupCard(
+                        group: g,
+                        memberIds: memberIds,
+                        reclaimableBytes:
+                            similarity.estimateReclaimable(g, assets),
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => GroupDetailScreen(groupId: g.groupId),
+                            builder: (_) =>
+                                GroupDetailScreen(groupId: g.groupId),
                           ),
                         ),
                       ),
@@ -89,36 +98,6 @@ class GroupsScreen extends ConsumerWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-class _GroupCardView extends ConsumerWidget {
-  const _GroupCardView({required this.groupId, this.onTap});
-
-  final String groupId;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final groups = ref.watch(groupsControllerProvider);
-    final assets = ref.watch(assetsControllerProvider);
-    final similarity = ref.watch(similarityProvider);
-
-    final group = groups.where((g) => g.groupId == groupId).firstOrNull;
-    if (group == null) return const SizedBox.shrink();
-
-    final members = group.assetIds
-        .map((id) => assets[id])
-        .whereType<PhotoAsset>()
-        .toList();
-    final reclaim = similarity.estimateReclaimable(group, assets);
-
-    return GroupCard(
-      group: group,
-      memberIds: members.map((m) => m.id).toList(),
-      reclaimableBytes: reclaim,
-      onTap: onTap,
     );
   }
 }

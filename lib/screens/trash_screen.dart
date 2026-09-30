@@ -201,6 +201,9 @@ class _TrashItemCard extends StatelessWidget {
               width: 56,
               height: 56,
               fit: BoxFit.cover,
+              // 回收站里是原图，不约束解码尺寸会把整张原图展开成位图进 ImageCache
+              cacheWidth:
+                  (56 * MediaQuery.devicePixelRatioOf(context)).round(),
               errorBuilder: (_, _, _) => Container(
                 width: 56,
                 height: 56,

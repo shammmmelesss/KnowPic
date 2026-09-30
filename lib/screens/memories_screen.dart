@@ -11,6 +11,7 @@ import '../services/memory_service.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/ios_ui.dart';
 import '../widgets/photo_thumb.dart';
+import 'photo_viewer_screen.dart';
 
 /// 记忆盲盒 & 那年今日（对应文档 Phase 3 生态与体验）
 class MemoriesScreen extends ConsumerStatefulWidget {
@@ -103,11 +104,26 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
   void _pick() {
     final assets = ref.read(assetsControllerProvider);
     final picked = MemoryService.pickBlindBox(assets, count: 1);
+    if (picked.isEmpty) {
+      // 抽签池为空（没有 90 天以上的老照片）：不能发成功触感更不能静默无反应
+      Haptics.warning();
+      showIosToast(context, '暂无可抽取的老照片（需要 90 天以上的照片）');
+      return;
+    }
     Haptics.success();
     setState(() {
       _picked = picked;
       _count++;
     });
+  }
+
+  void _openViewer(List<PhotoAsset> photos, int index) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PhotoViewerScreen(assets: photos, initialIndex: index),
+      ),
+    );
   }
 
   @override
@@ -161,7 +177,14 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  PhotoThumb(assetId: photo.id, fit: BoxFit.contain),
+                  GestureDetector(
+                    onTap: () => _openViewer([photo], 0),
+                    child: PhotoThumb(
+                      key: ValueKey(photo.id),
+                      assetId: photo.id,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                   Positioned(
                     left: 8,
                     right: 8,
@@ -238,32 +261,36 @@ class _TodayInHistoryTab extends ConsumerWidget {
       itemCount: photos.length,
       itemBuilder: (context, i) {
         final p = photos[i];
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            PhotoThumb(
-                assetId: p.id,
-                borderRadius: BorderRadius.circular(Ios.radiusThumb)),
-            Positioned(
-              left: 4,
-              bottom: 4,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '${p.createdTime.year}年',
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelSmall
-                      ?.copyWith(color: Colors.white),
+        return GestureDetector(
+          key: ValueKey(p.id),
+          onTap: () => _openViewer(photos, i),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              PhotoThumb(
+                  assetId: p.id,
+                  borderRadius: BorderRadius.circular(Ios.radiusThumb)),
+              Positioned(
+                left: 4,
+                bottom: 4,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${p.createdTime.year}年',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(color: Colors.white),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );

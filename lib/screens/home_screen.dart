@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ios_design.dart';
+import '../models/photo_asset.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/ios_ui.dart';
@@ -12,6 +13,7 @@ import '../widgets/photo_thumb.dart';
 import '../widgets/section_header.dart';
 import 'groups_screen.dart';
 import 'memories_screen.dart';
+import 'photo_viewer_screen.dart';
 import 'report_screen.dart';
 import 'scan_screen.dart';
 import 'settings_screen.dart';
@@ -41,8 +43,10 @@ class HomeScreen extends ConsumerWidget {
         children: [
           if (!permission)
             _PermissionCard(
-                onGrant: () =>
-                    ref.read(permissionControllerProvider.notifier).request())
+              onGrant: () => _requestPermission(context, ref),
+              onOpenSettings: () =>
+                  ref.read(libraryProvider).openSystemSettings(),
+            )
           else ...[
             CustomScrollView(
               slivers: [
@@ -121,6 +125,24 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _requestPermission(BuildContext context, WidgetRef ref) async {
+    final ok = await ref.read(permissionControllerProvider.notifier).request();
+    // iOS 上拒绝过一次后系统不再弹窗，requestPermission 只会立刻返回失败。
+    // 必须给出可见反馈 + 手动开启的出路，否则用户点了「授权」页面毫无变化。
+    if (!ok && context.mounted) {
+      showIosToast(context, '未获得相册权限，可在系统设置中手动开启');
+    }
+  }
+
+  void _openViewer(BuildContext context, List<PhotoAsset> photos, int index) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PhotoViewerScreen(assets: photos, initialIndex: index),
+      ),
+    );
+  }
+
   void _startScan(BuildContext context, WidgetRef ref) {
     final progress = ref.read(scanProgressProvider);
     if (progress.isRunning) return;
@@ -164,6 +186,9 @@ class HomeScreen extends ConsumerWidget {
             ),
           ];
         }
+        final indexById = {
+          for (var i = 0; i < photos.length; i++) photos[i].id: i,
+        };
         return [
           SliverPadding(
             padding: const EdgeInsets.only(bottom: 140),
@@ -175,8 +200,16 @@ class HomeScreen extends ConsumerWidget {
                 mainAxisSpacing: 1,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, i) => PhotoThumb(assetId: photos[i].id),
+                (context, i) => GestureDetector(
+                  key: ValueKey(photos[i].id),
+                  onTap: () => _openViewer(context, photos, i),
+                  child: PhotoThumb(assetId: photos[i].id),
+                ),
                 childCount: photos.length,
+                // Element 跟着资产 id 走而非跟着位置走：
+                // 按位置复用 State 会让格子显示成上一张照片
+                findChildIndexCallback: (key) =>
+                    indexById[(key as ValueKey<String>).value],
               ),
             ),
           ),
@@ -449,9 +482,12 @@ class _ScanCapsule extends StatelessWidget {
 }
 
 class _PermissionCard extends StatelessWidget {
-  const _PermissionCard({required this.onGrant});
+  const _PermissionCard({required this.onGrant, required this.onOpenSettings});
 
   final VoidCallback onGrant;
+
+  /// 系统已不再弹窗时（用户拒绝过一次）的唯一出路
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -499,6 +535,14 @@ class _PermissionCard extends StatelessWidget {
             CupertinoButton.filled(
               onPressed: onGrant,
               child: const Text('授权访问相册'),
+            ),
+            const SizedBox(height: 4),
+            CupertinoButton(
+              onPressed: onOpenSettings,
+              child: Text(
+                '前往系统设置开启',
+                style: TextStyle(color: Ios.blue(b), fontSize: 15),
+              ),
             ),
           ],
         ),

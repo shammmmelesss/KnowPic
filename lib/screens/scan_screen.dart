@@ -184,20 +184,32 @@ class _DoneView extends StatelessWidget {
   }
 }
 
-class _FailedView extends StatelessWidget {
+class _FailedView extends ConsumerWidget {
   const _FailedView();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return EmptyState(
       icon: CupertinoIcons.exclamationmark_circle,
-      title: '扫描失败',
-      subtitle: '请检查相册权限后重试',
-      action: CupertinoButton.filled(
-        onPressed: () {
-          Navigator.of(context).pop();
-        },
-        child: const Text('返回'),
+      title: '扫描未能完成',
+      // 不再一律归因于权限：失败原因可能是读取、写入或解析被中断
+      subtitle: '扫描过程中断，可重试或返回首页稍后再试',
+      action: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CupertinoButton.filled(
+            minimumSize: const Size(160, 44),
+            onPressed: () => ref
+                .read(scanProgressProvider.notifier)
+                .startScan(incremental: false),
+            child: const Text('重试'),
+          ),
+          const SizedBox(height: 4),
+          CupertinoButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('返回首页'),
+          ),
+        ],
       ),
     );
   }

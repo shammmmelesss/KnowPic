@@ -125,6 +125,17 @@ class PermissionController extends Notifier<bool> {
     }
     return ok;
   }
+
+  /// 回前台时重新核对权限：用户可能刚在系统设置里改过授权，
+  /// 不做这一步界面会一直停在「未授权」，用户以为设置没生效。
+  Future<void> recheck() async {
+    try {
+      final ok = await ref.read(libraryProvider).checkPermission();
+      if (ok == state) return;
+      state = ok;
+      if (ok) ref.invalidate(recentPhotosProvider);
+    } catch (_) {}
+  }
 }
 
 /// 最近 30 天照片（首页冷启动展示，文档 9.1）

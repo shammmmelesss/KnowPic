@@ -64,6 +64,9 @@ class _FakeLibrary implements PhotoLibraryService {
     savedFilenames.add(filename);
     return 'restored-${_saveCounter++}';
   }
+
+  @override
+  Future<void> openSystemSettings() async {}
 }
 
 /// 水平渐变（左黑右白）

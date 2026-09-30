@@ -1,12 +1,41 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/ios_design.dart';
+import 'providers/providers.dart';
 import 'screens/home_screen.dart';
 
 /// 应用根组件（iOS 人机界面指南风格）
-class KnowPicApp extends StatelessWidget {
+class KnowPicApp extends ConsumerStatefulWidget {
   const KnowPicApp({super.key});
+
+  @override
+  ConsumerState<KnowPicApp> createState() => _KnowPicAppState();
+}
+
+class _KnowPicAppState extends ConsumerState<KnowPicApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 用户可能刚去系统设置改了相册权限再切回来，回前台必须重新核对，
+    // 否则界面会一直停在「未授权」，看起来像设置没生效
+    if (state == AppLifecycleState.resumed) {
+      ref.read(permissionControllerProvider.notifier).recheck();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

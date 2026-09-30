@@ -146,17 +146,17 @@ class _IosPressableState extends State<IosPressable> {
 
   @override
   Widget build(BuildContext context) {
+    // 禁用时不套手势：否则 onTapDown/Up 照旧触发，元素会"按得动"却毫无响应
+    if (widget.onTap == null) return widget.child;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => setState(() => _down = true),
       onTapUp: (_) => setState(() => _down = false),
       onTapCancel: () => setState(() => _down = false),
-      onTap: widget.onTap == null
-          ? null
-          : () {
-              Haptics.tap();
-              widget.onTap!();
-            },
+      onTap: () {
+        Haptics.tap();
+        widget.onTap!();
+      },
       child: AnimatedScale(
         scale: _down ? widget.scale : 1,
         duration: const Duration(milliseconds: 110),

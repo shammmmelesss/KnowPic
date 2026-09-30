@@ -82,9 +82,9 @@ class ScannerService {
         _store.assets.remove(id);
       }
 
-      // 需要分析的照片：全量=全部；增量=新增
+      // 需要分析的照片：全量=全部；增量=新增 + 此前分析失败（dHash 为 0，如当时缩略图未就绪）
       final toAnalyze = incremental
-          ? photos.where((p) => !_store.assets.containsKey(p.id)).toList()
+          ? photos.where((p) => (_store.assets[p.id]?.dHash ?? 0) == 0).toList()
           : photos;
 
       final merged = <String, PhotoAsset>{};
@@ -134,6 +134,7 @@ class ScannerService {
           for (var i = 0; i < validPhotos.length && i < analyses.length; i++) {
             final p = validPhotos[i];
             final a = analyses[i];
+            if (a == null) continue; // 解码失败：保持未分析状态，下次增量扫描重试
             merged[p.id] = p.copyWith(
               dHash: a.dHash,
               features: a.analysis.features,
@@ -158,7 +159,10 @@ class ScannerService {
       // 聚类为 O(n²) CPU 密集操作，放隔离区避免阻塞 UI
       List<SimilarGroup> groups;
       try {
-        groups = await Isolate.run(() => _similarity.clusterAndClassify(allAssets));
+        // 先取到局部变量：闭包直接引用字段会捕获 this（含 ValueNotifier 监听器等不可发送对象），
+        // 导致 Isolate.run 必然失败并退回主隔离区执行，O(n²) 聚类会卡住 UI
+        final similarity = _similarity;
+        groups = await Isolate.run(() => similarity.clusterAndClassify(allAssets));
       } catch (err) {
         Log.e('Scanner', 'isolate cluster failed, fallback to main isolate', err);
         groups = _similarity.clusterAndClassify(allAssets);
@@ -210,7 +214,7 @@ class ScannerService {
   }
 
   /// 批量分析：在独立 Isolate 中解码 + dHash + 128 维特征 + 美学分
-  Future<List<_PhotoAnalysis>> _analyzeBatch(List<Uint8List> thumbnails) async {
+  Future<List<_PhotoAnalysis?>> _analyzeBatch(List<Uint8List> thumbnails) async {
     if (thumbnails.isEmpty) return const [];
     try {
       return await Isolate.run(() => _analyzePhotos(thumbnails));
@@ -231,17 +235,22 @@ class ScannerService {
 }
 
 /// 供 Isolate.run 调用的顶层函数（纯 Dart，可跨隔离区传输）
-List<_PhotoAnalysis> _analyzePhotos(List<Uint8List> thumbnails) {
-  final out = <_PhotoAnalysis>[];
+/// 返回列表与输入一一对应（失败项为 null），调用方按下标配对，不能跳过元素
+List<_PhotoAnalysis?> _analyzePhotos(List<Uint8List> thumbnails) {
+  final out = <_PhotoAnalysis?>[];
   for (final bytes in thumbnails) {
     try {
       final decoded = img.decodeImage(bytes);
-      if (decoded == null) continue;
+      if (decoded == null) {
+        out.add(null);
+        continue;
+      }
       final analysis = ImageFeatures.analyze(decoded);
       final dHash = PerceptualHash.dHash(decoded);
       out.add(_PhotoAnalysis(dHash, analysis));
     } catch (err) {
       debugPrint('analyze photo failed: $err');
+      out.add(null);
     }
   }
   return out;

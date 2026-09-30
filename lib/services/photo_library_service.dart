@@ -36,6 +36,11 @@ abstract class PhotoLibraryService {
 
   /// 将图片数据写回系统相册（回收站还原），返回新资产 id
   Future<String> saveImageToAlbum(Uint8List bytes, {required String filename, String? title});
+
+  /// 跳转系统设置页。
+  /// iOS 上用户拒绝过一次相册权限后，系统不再弹窗，requestPermission 只会立刻返回失败，
+  /// 此时「去系统设置手动开启」是唯一的恢复路径。
+  Future<void> openSystemSettings();
 }
 
 /// photo_manager 实现（iOS 优先）
@@ -63,6 +68,11 @@ class PhotoManagerLibrary implements PhotoLibraryService {
 
   @override
   bool get hasPermission => _granted;
+
+  @override
+  Future<void> openSystemSettings() async {
+    await PhotoManager.openSetting();
+  }
 
   @override
   Future<List<PhotoAsset>> loadAllPhotos({
