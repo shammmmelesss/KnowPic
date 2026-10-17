@@ -1,5 +1,6 @@
 import '../core/constants.dart';
 import '../core/utils/vector_math.dart';
+import '../models/best_reason.dart';
 import '../models/group_type.dart';
 import '../models/photo_asset.dart';
 import 'learning_service.dart';
@@ -57,16 +58,17 @@ class RankingService {
     return sorted.first.id;
   }
 
-  /// 推荐理由（对应 UI 徽章"👑 最清晰"等）
-  String bestReason(PhotoAsset best, List<PhotoAsset> members, {GroupType? groupType}) {
-    if (members.length < 2) return '唯一选择';
+  /// 推荐理由（对应 UI 徽章"👑 最清晰"等）。
+  /// 只返回枚举，文案由 l10n 解析，服务层不掺 UI 语言。
+  BestReason bestReason(PhotoAsset best, List<PhotoAsset> members, {GroupType? groupType}) {
+    if (members.length < 2) return BestReason.onlyChoice;
 
     // 连拍组：推荐动作最舒展、最清晰的"决定性瞬间"（文档 Phase 2 动作峰值捕捉）
     if (groupType == GroupType.burst && best.decisiveScore > 0.3) {
       final maxD = members
           .map((a) => a.decisiveScore)
           .reduce((a, b) => a > b ? a : b);
-      if (best.decisiveScore >= maxD - 0.05) return '决定性瞬间';
+      if (best.decisiveScore >= maxD - 0.05) return BestReason.decisiveMoment;
     }
 
     // 多人合影：推荐睁眼、微笑最佳的"合影表情最佳"（文档 Phase 1 人脸检测）
@@ -75,26 +77,30 @@ class RankingService {
       final bestG = members
           .map((a) => 0.45 * a.eyeOpenScore + 0.30 * a.smileScore)
           .reduce((a, b) => a > b ? a : b);
-      if (groupScore >= bestG - 0.05 && groupScore > 0.15) return '合影表情最佳';
+      if (groupScore >= bestG - 0.05 && groupScore > 0.15) {
+        return BestReason.bestGroupExpression;
+      }
     }
 
     final sharps = members.map((a) => a.features[16]).toList()..sort();
     final sharpRank = sharps.indexOf(best.features[16]);
-    if (sharpRank >= sharps.length - 1 && best.features[16] > 0.5) return '最清晰';
+    if (sharpRank >= sharps.length - 1 && best.features[16] > 0.5) {
+      return BestReason.sharpest;
+    }
 
     final f = best.features;
     final over = f[18] + f[19]; // 高光+阴影溢出
     final minOver = members.map((a) => a.features[18] + a.features[19]).reduce(
         (a, b) => a < b ? a : b);
-    if (over <= minOver + 0.01 && over < 0.05) return '曝光最佳';
+    if (over <= minOver + 0.01 && over < 0.05) return BestReason.bestExposure;
 
     final color = f[17];
     final maxColor = members.map((a) => a.features[17]).reduce((a, b) => a > b ? a : b);
-    if (color >= maxColor - 0.02 && color > 0.4) return '色彩最佳';
+    if (color >= maxColor - 0.02 && color > 0.4) return BestReason.bestColor;
 
     final skin = f[20];
-    if (skin > 0.1) return '表情最佳';
+    if (skin > 0.1) return BestReason.bestExpression;
 
-    return '综合最佳';
+    return BestReason.overallBest;
   }
 }

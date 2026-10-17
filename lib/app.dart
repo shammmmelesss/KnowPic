@@ -1,8 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/ios_design.dart';
+import 'l10n/app_strings.dart';
+import 'l10n/app_strings_delegate.dart';
 import 'providers/providers.dart';
 import 'screens/home_screen.dart';
 
@@ -39,9 +42,18 @@ class _KnowPicAppState extends ConsumerState<KnowPicApp>
 
   @override
   Widget build(BuildContext context) {
+    final locale = ref.watch(localeProvider);
     return MaterialApp(
       title: 'KnowPic',
       debugShowCheckedModeBanner: false,
+      locale: locale,
+      supportedLocales: AppStrings.supportedLocales,
+      localizationsDelegates: const [
+        AppStringsDelegate(),
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: ThemeMode.system,

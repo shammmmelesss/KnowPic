@@ -1,10 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../core/ios_design.dart';
-import '../models/group_type.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../models/scan_report.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
@@ -39,13 +38,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   Widget build(BuildContext context) {
     final reports = ref.watch(reportsControllerProvider);
 
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: frostedAppBar(context, title: '清理报告'),
+      appBar: frostedAppBar(context, title: l10n.reportTitle),
       body: reports.isEmpty
-          ? const EmptyState(
+          ? EmptyState(
               icon: CupertinoIcons.chart_bar,
-              title: '还没有清理记录',
-              subtitle: '完成一次「一键清理」后，这里会展示释放的空间',
+              title: l10n.reportEmptyTitle,
+              subtitle: l10n.reportEmptySubtitle,
             )
           : ListView(
               padding: const EdgeInsets.all(16),
@@ -70,19 +70,11 @@ class _ReportCard extends StatelessWidget {
   final CleanReport report;
   final bool highlight;
 
-  static const _typeLabels = {
-    GroupType.burst: '连拍',
-    GroupType.editHistory: '修图稿',
-    GroupType.screenshot: '截图',
-    GroupType.duplicate: '重复',
-    GroupType.longShot: '长图',
-    GroupType.mixed: '相似',
-  };
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final b = theme.brightness;
+    final l10n = context.l10n;
     return IosCard(
       color: highlight ? Ios.blue(b).withValues(alpha: 0.10) : null,
       child: Column(
@@ -94,13 +86,13 @@ class _ReportCard extends StatelessWidget {
                   color: Ios.green(b), size: 22),
               const SizedBox(width: 8),
               Text(
-                '释放 ${report.freedLabel}',
+                l10n.freed(report.freedLabel),
                 style: theme.textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const Spacer(),
               Text(
-                DateFormat('M月d日 HH:mm').format(report.createdAt),
+                l10n.formatMonthDayTime(report.createdAt),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: Ios.tertiaryLabel(b)),
               ),
@@ -109,9 +101,15 @@ class _ReportCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              _Metric(label: '删除', value: '${report.deletedCount} 张'),
-              _Metric(label: '保留', value: '${report.keptCount} 张'),
-              _Metric(label: '处理组', value: '${report.groupCount} 组'),
+              _Metric(
+                  label: l10n.reportDeleted,
+                  value: l10n.photoCount(report.deletedCount)),
+              _Metric(
+                  label: l10n.reportKept,
+                  value: l10n.photoCount(report.keptCount)),
+              _Metric(
+                  label: l10n.reportGroups,
+                  value: l10n.groupCountLabel(report.groupCount)),
             ],
           ),
           if (report.categoryCounts.isNotEmpty) ...[
@@ -121,7 +119,7 @@ class _ReportCard extends StatelessWidget {
               runSpacing: 6,
               children: report.categoryCounts.entries
                   .map((e) => IosBadge(
-                        label: '${_typeLabels[e.key] ?? e.key.name} × ${e.value}',
+                        label: l10n.groupTypeBadge(e.key, e.value),
                         color: Ios.fill(b),
                         fg: Ios.secondaryLabel(b),
                         fontSize: 12,

@@ -70,25 +70,7 @@ class AppConfig {
     sceneOther,
   ];
 
-  /// 场景中文名（设置页展示）
-  static String sceneLabel(String scene) {
-    switch (scene) {
-      case scenePortrait:
-        return '人像';
-      case sceneLandscape:
-        return '风景';
-      case sceneDocument:
-        return '文档/截图';
-      case sceneFood:
-        return '美食';
-      case sceneOther:
-        return '其他';
-      case defaultScene:
-        return '全局';
-      default:
-        return scene;
-    }
-  }
+  // 场景显示名由 l10n 提供（AppStrings.sceneLabel）
 
   // ---- 隐式反馈阈值 ----
   static const int viewLongSeconds = 2; // 长停留判定（组详情预览）

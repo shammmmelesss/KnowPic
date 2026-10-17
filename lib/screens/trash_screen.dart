@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ios_design.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../models/trash_item.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
@@ -40,11 +41,12 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
     final items = ref.watch(trashControllerProvider);
     final theme = Theme.of(context);
     final b = theme.brightness;
+    final l10n = context.l10n;
 
     return Scaffold(
       appBar: frostedAppBar(
         context,
-        title: '回收站',
+        title: l10n.trashTitle,
         actions: [
           if (items.isNotEmpty)
             CupertinoButton(
@@ -52,17 +54,17 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               onPressed: () => _emptyAll(),
               child: Text(
-                '清空',
+                l10n.emptyTrashAction,
                 style: TextStyle(color: Ios.red(b), fontSize: 17),
               ),
             ),
         ],
       ),
       body: items.isEmpty
-          ? const EmptyState(
+          ? EmptyState(
               icon: CupertinoIcons.trash,
-              title: '回收站是空的',
-              subtitle: '清理的照片会在这里保留 30 天，可随时还原',
+              title: l10n.trashEmptyTitle,
+              subtitle: l10n.trashEmptySubtitle,
             )
           : Column(
               children: [
@@ -72,7 +74,7 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
                   child: SizedBox(
                     width: double.infinity,
                     child: Text(
-                      '已删除照片保留 30 天，过期将自动彻底删除；还原后照片将回到系统相册。',
+                      l10n.trashNotice,
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
@@ -106,8 +108,8 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
     showIosToast(
       context,
       restored.isNotEmpty
-          ? '已还原${item.isLivePhoto ? '（Live Photo 仅还原静态图）' : ''}'
-          : '还原失败，请重试',
+          ? context.l10n.restored(item.isLivePhoto)
+          : context.l10n.restoreFailed,
       success: restored.isNotEmpty,
     );
   }
@@ -116,18 +118,18 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('彻底删除？'),
-        content: const Text('此操作不可恢复，照片将被永久删除。'),
+        title: Text(context.l10n.permanentDeleteTitle),
+        content: Text(context.l10n.permanentDeleteContent),
         actions: [
           CupertinoDialogAction(
             isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('彻底删除'),
+            child: Text(context.l10n.permanentDeleteAction),
           ),
         ],
       ),
@@ -143,18 +145,18 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('清空回收站？'),
-        content: const Text('将彻底删除回收站中的所有照片，此操作不可恢复。'),
+        title: Text(context.l10n.emptyTrashTitle),
+        content: Text(context.l10n.emptyTrashContent),
         actions: [
           CupertinoDialogAction(
             isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(context.l10n.cancel),
           ),
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空'),
+            child: Text(context.l10n.emptyTrashAction),
           ),
         ],
       ),
@@ -165,7 +167,7 @@ class _TrashScreenState extends ConsumerState<TrashScreen> {
     await ref.read(trashProvider).permanentDelete(ids);
     if (mounted) {
       ref.read(trashControllerProvider.notifier).reload();
-      showIosToast(context, '回收站已清空', success: true);
+      showIosToast(context, context.l10n.trashCleared, success: true);
     }
   }
 }
@@ -188,6 +190,7 @@ class _TrashItemCard extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final b = theme.brightness;
+    final l10n = context.l10n;
     final urgent = item.remainingDays <= 5;
 
     return IosCard(
@@ -226,12 +229,15 @@ class _TrashItemCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${Ios.formatBytes(item.byteSize)}${item.isLivePhoto ? ' · Live' : ''}',
+                  l10n.photoSize(
+                      Ios.formatBytes(item.byteSize), item.isLivePhoto),
                   style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 6),
                 IosBadge(
-                  label: item.isExpired ? '已过期' : '还剩 ${item.remainingDays} 天',
+                  label: item.isExpired
+                      ? l10n.expired
+                      : l10n.remainingDays(item.remainingDays),
                   color: urgent
                       ? Ios.red(b).withValues(alpha: 0.12)
                       : Ios.fill(b),

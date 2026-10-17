@@ -1,11 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../core/constants.dart';
 import '../core/haptics.dart';
 import '../core/ios_design.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../models/photo_asset.dart';
 import '../models/user_action.dart';
 import '../providers/providers.dart';
@@ -45,12 +45,13 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     final ranking = ref.watch(rankingProvider);
     final theme = Theme.of(context);
     final b = theme.brightness;
+    final l10n = context.l10n;
 
     final group = groups.where((g) => g.groupId == widget.groupId).firstOrNull;
     if (group == null) {
       return Scaffold(
         appBar: frostedAppBar(context),
-        body: const Center(child: Text('该分组已清理')),
+        body: Center(child: Text(context.l10n.groupCleaned)),
       );
     }
 
@@ -67,9 +68,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     if (_currentIndex >= members.length) _currentIndex = members.length - 1;
 
     final best = members.isEmpty ? null : members.first;
-    final bestReason = best == null || members.length < 2
-        ? '唯一选择'
-        : ranking.bestReason(best, members, groupType: group.type);
+    // 推荐理由由 l10n 解析枚举；不足 2 张时 ranking 直接返回 onlyChoice
+    final bestReason = best == null
+        ? null
+        : l10n.bestReason(
+            ranking.bestReason(best, members, groupType: group.type));
     final keepCount = _keepIds.length;
     final freedBytes = members
         .where((m) => !_keepIds.contains(m.id))
@@ -81,7 +84,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       child: Scaffold(
       appBar: frostedAppBar(
         context,
-        title: '${group.type.label}（${members.length} 张）',
+        title: context.l10n.groupDetailTitle(group.type, members.length),
       ),
       body: Column(
         children: [
@@ -90,11 +93,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Row(
               children: [
-                Text('已选保留 $keepCount/${members.length} 张',
+                Text(l10n.keepSelected(keepCount, members.length),
                     style: theme.textTheme.titleSmall),
                 const Spacer(),
                 Text(
-                  '预计释放 ${Ios.formatBytes(freedBytes)}',
+                  l10n.estimatedFree(Ios.formatBytes(freedBytes)),
                   style: theme.textTheme.titleSmall
                       ?.copyWith(color: Ios.blue(b)),
                 ),
@@ -105,7 +108,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           Expanded(
             child: members.isEmpty
                 ? Center(
-                    child: Text('暂无照片', style: theme.textTheme.bodyMedium))
+                    child: Text(l10n.noPhotos,
+                        style: theme.textTheme.bodyMedium))
                 : Stack(
                     children: [
                       PageView.builder(
@@ -268,7 +272,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                                 _keepIds.addAll(members.map((m) => m.id));
                               }),
                       child: Text(
-                        '全部保留',
+                        l10n.keepAll,
                         style: TextStyle(
                           color: Ios.label(b),
                           fontSize: 17,
@@ -290,7 +294,9 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                           ? const CupertinoActivityIndicator(
                               color: Colors.white)
                           : Text(
-                              '一键清理${freedBytes > 0 ? '（${Ios.formatBytes(freedBytes)}）' : ''}',
+                              l10n.cleanNow(freedBytes > 0
+                                  ? Ios.formatBytes(freedBytes)
+                                  : null),
                               style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
@@ -381,20 +387,26 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => CupertinoAlertDialog(
-          title: const Text('确认清理？'),
+          title: Text(context.l10n.confirmCleanTitle),
           content: Text(
-            '将删除 ${deletedIds.length} 张照片（释放约 ${Ios.formatBytes(deletedIds.fold<int>(0, (s, id) => s + (members.firstWhere((m) => m.id == id).byteSize)))}）。\n\n已删除照片会进入回收站，保留 30 天，可随时还原。',
+            context.l10n.confirmCleanContent(
+              deletedIds.length,
+              Ios.formatBytes(deletedIds.fold<int>(
+                  0,
+                  (s, id) =>
+                      s + (members.firstWhere((m) => m.id == id).byteSize))),
+            ),
           ),
           actions: [
             CupertinoDialogAction(
               isDefaultAction: true,
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
+              child: Text(context.l10n.cancel),
             ),
             CupertinoDialogAction(
               isDestructiveAction: true,
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认清理'),
+              child: Text(context.l10n.confirmClean),
             ),
           ],
         ),
@@ -423,9 +435,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       if (actuallyDeleted.isEmpty) {
         if (mounted) {
           Haptics.warning();
-          showIosToast(context, result.failedIds.isNotEmpty
-              ? '未删除任何照片（系统删除被取消或失败）'
-              : '未删除任何照片（云端照片尚未下载到本机）');
+          showIosToast(
+            context,
+            result.failedIds.isNotEmpty
+                ? context.l10n.nothingDeletedBySystem
+                : context.l10n.nothingDeletedByCloud,
+          );
           setState(() => _busy = false);
         }
         return;
@@ -483,17 +498,17 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         final skipped = result.skippedIds.length;
         final failed = result.failedIds.length;
         final message = skipped + failed > 0
-            ? '已清理 ${actuallyDeleted.length} 张'
-                '${skipped > 0 ? '，$skipped 张因云端未下载被跳过' : ''}'
-                '${failed > 0 ? '，$failed 张系统删除失败' : ''}'
-            : '已释放 ${Ios.formatBytes(result.freedBytes)}，可在回收站还原';
+            ? '${context.l10n.cleanedCount(actuallyDeleted.length)}'
+                '${skipped > 0 ? context.l10n.skippedByCloud(skipped) : ''}'
+                '${failed > 0 ? context.l10n.failedBySystem(failed) : ''}'
+            : context.l10n.freedAndRestorable(Ios.formatBytes(result.freedBytes));
         showIosToast(context, message, success: true);
         Navigator.of(context).pop(result.freedBytes);
       }
     } catch (err) {
       if (mounted) {
         Haptics.warning();
-        showIosToast(context, '清理失败：$err');
+        showIosToast(context, context.l10n.cleanFailed(err));
         setState(() => _busy = false);
       }
     }
@@ -504,20 +519,18 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     final reset = await showDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('看起来推荐不太对？'),
-        content: const Text(
-          'AI 已经连续多次推荐了您不喜欢的照片。是否重置偏好模型，重新学习您的喜好？',
-        ),
+        title: Text(context.l10n.resetPromptTitle),
+        content: Text(context.l10n.resetPromptContent),
         actions: [
           CupertinoDialogAction(
             isDefaultAction: true,
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('继续学习'),
+            child: Text(context.l10n.keepLearning),
           ),
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('重置偏好'),
+            child: Text(context.l10n.resetPreferenceAction),
           ),
         ],
       ),
@@ -525,7 +538,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     if (reset == true) {
       await learning.confirmReset();
       if (mounted) {
-        showIosToast(context, '偏好已重置，将重新学习您的喜好');
+        showIosToast(context, context.l10n.preferenceResetLearning);
       }
     }
   }
@@ -685,7 +698,7 @@ class _CarouselPhoto extends StatelessWidget {
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        DateFormat('yyyy年M月d日 HH:mm').format(asset.createdTime),
+                        context.l10n.formatDateTime(asset.createdTime),
                         style: theme.textTheme.labelSmall
                             ?.copyWith(color: Colors.white),
                       ),

@@ -11,18 +11,17 @@ enum ScanPhase {
 
 /// 扫描进度状态
 class ScanProgress {
+  /// 阶段文案由 l10n 依 [phase]/[current]/[total] 生成，此处只存数据
   const ScanProgress({
     this.phase = ScanPhase.idle,
     this.current = 0,
     this.total = 0,
-    this.message = '',
     this.elapsedMs = 0,
   });
 
   final ScanPhase phase;
   final int current;
   final int total;
-  final String message;
   final int elapsedMs;
 
   bool get isRunning =>
@@ -40,14 +39,12 @@ class ScanProgress {
     ScanPhase? phase,
     int? current,
     int? total,
-    String? message,
     int? elapsedMs,
   }) {
     return ScanProgress(
       phase: phase ?? this.phase,
       current: current ?? this.current,
       total: total ?? this.total,
-      message: message ?? this.message,
       elapsedMs: elapsedMs ?? this.elapsedMs,
     );
   }

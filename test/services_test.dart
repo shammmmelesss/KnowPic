@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:knowpic/core/constants.dart';
+import 'package:knowpic/l10n/app_strings.dart';
+import 'package:knowpic/models/best_reason.dart';
 import 'package:knowpic/models/group_type.dart';
 import 'package:knowpic/models/photo_asset.dart';
 import 'package:knowpic/models/preference_model.dart';
@@ -129,7 +131,12 @@ void main() {
       await store.init();
       final ranking = RankingService(LearningService(store));
       final members = [_asset('a', dHash: 1), _asset('b', dHash: 2)];
-      expect(ranking.bestReason(members.first, members), isNotEmpty);
+      // 服务层只返回枚举，文案由 l10n 解析
+      final reason = ranking.bestReason(members.first, members);
+      expect(reason, isIn(BestReason.values));
+      for (final code in AppStrings.supportedLanguageCodes) {
+        expect(AppStrings.ofCode(code).bestReason(reason), isNotEmpty);
+      }
     });
   });
 

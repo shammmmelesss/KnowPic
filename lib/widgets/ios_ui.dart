@@ -36,42 +36,35 @@ PreferredSizeWidget frostedAppBar(
   );
 }
 
-/// 毛玻璃大标题 flexibleSpace（用于 SliverAppBar.large）。
-/// 复刻 M3 _ScrollUnderFlexibleSpace 的标题结构（随滚动上移裁切、
-/// 收起时 toolbar 标题淡入），并叠加 iOS 模糊材质。
-Widget frostedLargeTitleBar(BuildContext context, {required String title}) {
-  return ClipRect(
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-      child: Builder(
-        builder: (context) {
-          final settings = context
-              .dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>()!;
-          final style = Theme.of(context).textTheme.titleLarge;
-          return Column(
-            children: [
-              Padding(padding: EdgeInsets.only(top: settings.minExtent)),
-              Flexible(
-                child: ClipRect(
-                  child: Align(
-                    alignment: AlignmentDirectional.bottomStart,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-                      child: DefaultTextStyle(
-                        style: style ?? const TextStyle(fontSize: 34),
-                        maxLines: 1,
-                        overflow: TextOverflow.clip,
-                        child: Text(title),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+/// 单行毛玻璃标题栏：标题与操作按钮同处一行。
+/// 相比 SliverAppBar.large 去掉了大标题那一整块留白，同时保留 iOS 模糊材质。
+/// 颜色/字重之外的部分由 appBarTheme 兜底（暗色模式仍跟随主题）。
+SliverAppBar frostedSliverAppBar(
+  BuildContext context, {
+  required String title,
+  List<Widget> actions = const [],
+  Widget? leading,
+  bool centerTitle = false,
+  bool pinned = false,
+  double toolbarHeight = 56,
+}) {
+  return SliverAppBar(
+    leading: leading,
+    title: Text(
+      title,
+      style: const TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.6,
       ),
     ),
+    toolbarHeight: toolbarHeight,
+    titleSpacing: 20,
+    centerTitle: centerTitle,
+    pinned: pinned,
+    backgroundColor: Colors.transparent,
+    flexibleSpace: frostedBar(context),
+    actions: actions,
   );
 }
 

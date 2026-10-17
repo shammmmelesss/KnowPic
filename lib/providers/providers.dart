@@ -1,8 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/app_strings.dart';
 import '../models/photo_asset.dart';
 import '../models/scan_progress.dart';
 import '../models/scan_report.dart';
@@ -48,11 +49,25 @@ class SettingsController extends Notifier<AppSettings> {
     await state.save(ref.read(storeProvider).rootDir);
   }
 
+  Future<void> setLanguageMode(String mode) async {
+    state = state.copyWith(languageMode: mode);
+    await state.save(ref.read(storeProvider).rootDir);
+  }
+
   Future<void> updateLastScan() async {
     state = state.copyWith(lastScanAt: DateTime.now());
     await state.save(ref.read(storeProvider).rootDir);
   }
 }
+
+/// 界面语言：设置里选了具体语言就用它，否则跟随系统（不支持的系统语言回落中文）
+final localeProvider = Provider<Locale>((ref) {
+  final mode = ref.watch(settingsProvider).languageMode;
+  final picked = AppLanguage.fromCode(mode).locale;
+  if (picked != null) return picked;
+  return AppStrings.resolveSystem(
+      WidgetsBinding.instance.platformDispatcher.locale);
+});
 
 final libraryProvider = Provider<PhotoLibraryService>(
   (ref) => PhotoManagerLibrary(),

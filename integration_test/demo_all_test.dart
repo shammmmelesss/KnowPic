@@ -38,14 +38,14 @@ void main() {
     var ready = false;
     for (var i = 0; i < 40 && !ready; i++) {
       await tester.pump(const Duration(milliseconds: 500));
-      ready = find.byKey(const ValueKey('qa_相似组')).evaluate().isNotEmpty;
+      ready = find.byKey(const ValueKey('qa_groups')).evaluate().isNotEmpty;
       if (!ready) await Future.delayed(const Duration(milliseconds: 500));
     }
     expect(ready, isTrue, reason: '首页快捷入口未在预期时间内出现');
     await pause(1000);
 
     // 1. 相似组列表
-    await waitTap(find.byKey(const ValueKey('qa_相似组')));
+    await waitTap(find.byKey(const ValueKey('qa_groups')));
     expect(find.byType(GroupsScreen), findsOneWidget);
     await pause(1200);
 
@@ -66,13 +66,13 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
 
     // 5. 清理报告
-    await waitTap(find.byKey(const ValueKey('qa_清理报告')));
+    await waitTap(find.byKey(const ValueKey('qa_report')));
     await pause(1500);
     await waitTap(find.byType(BackButton));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 6. 记忆：盲盒 → 那年今日
-    await waitTap(find.byKey(const ValueKey('qa_记忆')));
+    await waitTap(find.byKey(const ValueKey('qa_memories')));
     await pause(1500);
     await waitTap(find.text('那年今日'));
     await pause(1200);
@@ -91,13 +91,13 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
 
     // 8. 回收站（清理前）
-    await waitTap(find.byKey(const ValueKey('qa_回收站')));
+    await waitTap(find.byKey(const ValueKey('qa_trash')));
     await pause(1500);
     await waitTap(find.byType(BackButton));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 9. 一键清理演示（真实删除：系统若弹"允许删除照片"需人工点击允许）
-    await waitTap(find.byKey(const ValueKey('qa_相似组')));
+    await waitTap(find.byKey(const ValueKey('qa_groups')));
     await pause(1500);
     await waitTap(find.byKey(const ValueKey('group_card_0')));
     await pause(1500);
@@ -111,7 +111,7 @@ void main() {
     await pause(500);
     await waitTap(find.byType(BackButton), settleMs: 500);
     await tester.pumpAndSettle(const Duration(seconds: 2));
-    await waitTap(find.byKey(const ValueKey('qa_回收站')));
+    await waitTap(find.byKey(const ValueKey('qa_trash')));
     await pause(2000);
 
     // 收尾：截图窗口 + 结束标记

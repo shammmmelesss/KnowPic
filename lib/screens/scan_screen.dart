@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ios_design.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../models/scan_progress.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
@@ -16,32 +17,37 @@ class ScanScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final progress = ref.watch(scanProgressProvider);
+    final l10n = context.l10n;
 
     return Scaffold(
-      appBar: frostedAppBar(context, title: '智能扫描'),
+      appBar: frostedAppBar(context, title: l10n.scanTitle),
       body: switch (progress.phase) {
         ScanPhase.reading => _PhaseView(
             icon: CupertinoIcons.photo_on_rectangle,
-            title: '正在读取相册',
-            subtitle: progress.message,
+            title: l10n.scanStatus(ScanPhase.reading),
+            subtitle: l10n.scanStatus(
+              progress.phase,
+              current: progress.current,
+              total: progress.total,
+            ),
           ),
         ScanPhase.analyzing => _AnalyzeView(progress: progress),
         ScanPhase.clustering => _PhaseView(
             icon: CupertinoIcons.square_grid_2x2,
-            title: '正在聚类分组',
-            subtitle: '按 dHash 感知哈希识别相似照片…',
+            title: l10n.scanStatus(ScanPhase.clustering),
+            subtitle: l10n.scanClusteringSubtitle,
           ),
         ScanPhase.saving => _PhaseView(
             icon: CupertinoIcons.floppy_disk,
-            title: '正在保存',
-            subtitle: '写入特征库与分组索引…',
+            title: l10n.scanStatus(ScanPhase.saving),
+            subtitle: l10n.scanSavingSubtitle,
           ),
         ScanPhase.done => _DoneView(progress: progress),
         ScanPhase.failed => const _FailedView(),
         ScanPhase.idle => _PhaseView(
             icon: CupertinoIcons.search,
-            title: '准备就绪',
-            subtitle: '点击「开始扫描」即可整理相册',
+            title: l10n.scanStatus(ScanPhase.idle),
+            subtitle: l10n.scanIdleSubtitle,
           ),
       },
     );
@@ -103,10 +109,12 @@ class _AnalyzeView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('正在提取特征', style: theme.textTheme.headlineMedium),
+            Text(context.l10n.analyzeTitle,
+                style: theme.textTheme.headlineMedium),
             const SizedBox(height: 8),
             Text(
-              '${progress.current}/${progress.total} · 流水线：缩略图 → dHash → 128 维特征 → 美学分',
+              context.l10n
+                  .analyzePipeline(progress.current, progress.total),
               style: theme.textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
@@ -149,10 +157,12 @@ class _DoneView extends StatelessWidget {
             Icon(CupertinoIcons.check_mark_circled,
                 size: 64, color: Ios.green(b)),
             const SizedBox(height: 16),
-            Text('扫描完成', style: theme.textTheme.headlineMedium),
+            Text(context.l10n.scanStatus(ScanPhase.done),
+                style: theme.textTheme.headlineMedium),
             const SizedBox(height: 8),
             Text(
-              '耗时 ${(progress.elapsedMs / 1000).toStringAsFixed(1)} 秒，分析 ${progress.current} 张照片',
+              context.l10n.scanDoneSummary(
+                  progress.elapsedMs / 1000, progress.current),
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: Ios.secondaryLabel(b)),
             ),
@@ -163,19 +173,19 @@ class _DoneView extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const GroupsScreen()),
                 );
               },
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(CupertinoIcons.photo_on_rectangle, size: 18),
-                  SizedBox(width: 8),
-                  Text('查看相似组'),
+                  const Icon(CupertinoIcons.photo_on_rectangle, size: 18),
+                  const SizedBox(width: 8),
+                  Text(context.l10n.viewGroups),
                 ],
               ),
             ),
             const SizedBox(height: 4),
             CupertinoButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('返回首页'),
+              child: Text(context.l10n.backHome),
             ),
           ],
         ),
@@ -191,9 +201,9 @@ class _FailedView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return EmptyState(
       icon: CupertinoIcons.exclamationmark_circle,
-      title: '扫描未能完成',
+      title: context.l10n.scanFailedTitle,
       // 不再一律归因于权限：失败原因可能是读取、写入或解析被中断
-      subtitle: '扫描过程中断，可重试或返回首页稍后再试',
+      subtitle: context.l10n.scanFailedSubtitle,
       action: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -202,12 +212,12 @@ class _FailedView extends ConsumerWidget {
             onPressed: () => ref
                 .read(scanProgressProvider.notifier)
                 .startScan(incremental: false),
-            child: const Text('重试'),
+            child: Text(context.l10n.retry),
           ),
           const SizedBox(height: 4),
           CupertinoButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('返回首页'),
+            child: Text(context.l10n.backHome),
           ),
         ],
       ),

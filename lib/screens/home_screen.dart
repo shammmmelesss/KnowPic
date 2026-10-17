@@ -1,10 +1,9 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ios_design.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../models/photo_asset.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
@@ -25,6 +24,7 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final permission = ref.watch(permissionControllerProvider);
     final progress = ref.watch(scanProgressProvider);
     final groups = ref.watch(groupsControllerProvider);
@@ -50,21 +50,15 @@ class HomeScreen extends ConsumerWidget {
           else ...[
             CustomScrollView(
               slivers: [
-                SliverAppBar.large(
-                  title: const Text('KnowPic'),
-                  backgroundColor: Colors.transparent,
-                  flexibleSpace: frostedLargeTitleBar(context, title: 'KnowPic'),
-                  actions: [
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.gear_alt),
-                      tooltip: '设置',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const SettingsScreen()),
-                      ),
+                // 大标题直接落在页面背景上，不再套毛玻璃栏，视觉更轻
+                SliverToBoxAdapter(
+                  child: _HomeHeader(
+                    greeting: l10n.greeting(DateTime.now()),
+                    onSettings: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
                     ),
-                  ],
+                  ),
                 ),
                 CupertinoSliverRefreshControl(
                   onRefresh: () async {
@@ -79,10 +73,12 @@ class HomeScreen extends ConsumerWidget {
                     groupCount: groups.length,
                     reclaimableBytes: reclaimable,
                     lastScanAt: settings.lastScanAt,
+                    scanning: progress.isRunning,
+                    onRescan: () => _startScan(context, ref),
                   ),
                 ),
-                const SliverToBoxAdapter(
-                    child: SectionHeader(title: '快捷入口')),
+                SliverToBoxAdapter(
+                    child: SectionHeader(title: l10n.quickEntries)),
                 SliverToBoxAdapter(
                   child: _QuickActions(
                     groupCount: groups.length,
@@ -106,18 +102,15 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SliverToBoxAdapter(
-                    child: SectionHeader(title: '最近 30 天')),
+                SliverToBoxAdapter(
+                    child: SectionHeader(title: l10n.recent30Days)),
                 ..._recentSlivers(context, ref),
               ],
             ),
-            Positioned(
-              right: 20,
-              bottom: MediaQuery.paddingOf(context).bottom + 24,
-              child: _ScanCapsule(
-                running: progress.isRunning,
-                onTap: () => _startScan(context, ref),
-              ),
+            // 底部整宽主行动，替代原先悬浮在右下角的胶囊
+            _BottomScanBar(
+              running: progress.isRunning,
+              onTap: () => _startScan(context, ref),
             ),
           ],
         ],
@@ -130,7 +123,7 @@ class HomeScreen extends ConsumerWidget {
     // iOS 上拒绝过一次后系统不再弹窗，requestPermission 只会立刻返回失败。
     // 必须给出可见反馈 + 手动开启的出路，否则用户点了「授权」页面毫无变化。
     if (!ok && context.mounted) {
-      showIosToast(context, '未获得相册权限，可在系统设置中手动开启');
+      showIosToast(context, context.l10n.permissionToast);
     }
   }
 
@@ -169,20 +162,18 @@ class HomeScreen extends ConsumerWidget {
         SliverToBoxAdapter(
           child: EmptyState(
             icon: CupertinoIcons.exclamationmark_circle,
-            title: '读取相册失败',
+            title: context.l10n.readLibraryFailed,
             subtitle: '$e',
           ),
         ),
       ],
       data: (photos) {
         if (photos.isEmpty) {
+          // 空态在剩余空间内垂直居中，而不是贴着标题
           return const [
-            SliverToBoxAdapter(
-              child: EmptyState(
-                icon: CupertinoIcons.photo_on_rectangle,
-                title: '最近 30 天暂无照片',
-                subtitle: '点击右下角「开始扫描」，在后台整理全部照片',
-              ),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: _RecentEmptyState()),
             ),
           ];
         }
@@ -219,81 +210,329 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _StatsCard extends StatelessWidget {
-  const _StatsCard({
-    required this.scannedCount,
-    required this.groupCount,
-    required this.reclaimableBytes,
-    this.lastScanAt,
-  });
+/// 页面头部：问候语 + 大标题 + 设置入口
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader({required this.greeting, required this.onSettings});
 
-  final int scannedCount;
-  final int groupCount;
-  final int reclaimableBytes;
-  final DateTime? lastScanAt;
+  final String greeting;
+  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final b = theme.brightness;
-    return IosCard(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        MediaQuery.paddingOf(context).top + 10,
+        16,
+        18,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text('相册空间概览', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _StatItem(
-                  icon: CupertinoIcons.photo_on_rectangle,
-                  label: '已扫描',
-                  value: '$scannedCount 张'),
-              _StatItem(
-                  icon: CupertinoIcons.collections,
-                  label: '相似组',
-                  value: '$groupCount 组'),
-              _StatItem(
-                  icon: CupertinoIcons.arrow_down_circle,
-                  label: '可释放',
-                  value: Ios.formatBytes(reclaimableBytes)),
-            ],
-          ),
-          if (lastScanAt != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              '上次扫描：${lastScanAt!.month}月${lastScanAt!.day}日 ${lastScanAt!.hour.toString().padLeft(2, '0')}:${lastScanAt!.minute.toString().padLeft(2, '0')}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: Ios.tertiaryLabel(b)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  greeting,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Ios.secondaryLabel(b),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  context.l10n.appTitle,
+                  style: theme.textTheme.displayLarge?.copyWith(
+                    fontSize: 34,
+                    letterSpacing: -0.6,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Semantics(
+              button: true,
+              label: context.l10n.settings,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: IosPressable(
+                  onTap: onSettings,
+                  scale: 0.92,
+                  child: Center(
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Ios.fill(b),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        CupertinoIcons.gear_alt,
+                        size: 19,
+                        color: Ios.secondaryLabel(b),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
+/// 相册空间概览：品牌渐变卡片，承载三个核心数字
+class _StatsCard extends StatelessWidget {
+  const _StatsCard({
+    required this.scannedCount,
+    required this.groupCount,
+    required this.reclaimableBytes,
+    this.lastScanAt,
+    this.onRescan,
+    this.scanning = false,
+  });
+
+  final int scannedCount;
+  final int groupCount;
+  final int reclaimableBytes;
+  final DateTime? lastScanAt;
+  final VoidCallback? onRescan;
+  final bool scanning;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final bytes = Ios.formatBytes(reclaimableBytes).split(' ');
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF4B6BFB), Color(0xFF7B5BF7)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4B6BFB).withValues(alpha: 0.26),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            // 右上角柔光，避免大面积纯色发闷
+            Positioned(
+              right: -50,
+              top: -70,
+              child: Container(
+                width: 190,
+                height: 190,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          l10n.statsTitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 44,
+                        child: Center(
+                          child: _RescanPill(
+                            scanning: scanning,
+                            onTap: scanning ? null : onRescan,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      _StatItem(
+                        icon: CupertinoIcons.photo_on_rectangle,
+                        value: '$scannedCount',
+                        unit: l10n.photoUnit,
+                        label: l10n.statScanned,
+                      ),
+                      _StatItem(
+                        icon: CupertinoIcons.collections,
+                        value: '$groupCount',
+                        unit: l10n.groupUnit,
+                        label: l10n.statGroups,
+                      ),
+                      _StatItem(
+                        icon: CupertinoIcons.arrow_down_circle,
+                        value: bytes.first,
+                        unit: bytes.length > 1 ? bytes[1] : '',
+                        label: l10n.statReclaimable,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    height: 0.5,
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.clock,
+                        size: 13,
+                        color: Colors.white.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          lastScanAt == null
+                              ? l10n.noScanRecord
+                              : '${l10n.lastScanPrefix}'
+                                  '${l10n.formatMonthDayTime(lastScanAt!)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 12,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RescanPill extends StatelessWidget {
+  const _RescanPill({required this.scanning, this.onTap});
+
+  final bool scanning;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IosPressable(
+      onTap: onTap,
+      scale: 0.94,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          scanning ? context.l10n.scanning : context.l10n.rescan,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: scanning ? 0.7 : 1),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StatItem extends StatelessWidget {
-  const _StatItem({required this.label, required this.value, required this.icon});
+  const _StatItem({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.icon,
+  });
 
   final String label;
   final String value;
+  final String unit;
   final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final b = theme.brightness;
     return Expanded(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 22, color: Ios.blue(b)),
-          const SizedBox(height: 6),
-          Text(value,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
-          Text(label, style: theme.textTheme.bodySmall),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(icon, size: 19, color: Colors.white),
+          ),
+          const SizedBox(height: 10),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                if (unit.isNotEmpty)
+                  TextSpan(
+                    text: ' $unit',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.75),
+              fontSize: 12,
+              height: 1.2,
+            ),
+          ),
         ],
       ),
     );
@@ -320,30 +559,35 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final b = Theme.of(context).brightness;
+    final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           _QuickAction(
+              id: 'groups',
               icon: CupertinoIcons.photo_on_rectangle,
-              label: '相似组',
+              label: l10n.quickGroups,
               tint: Ios.blue(b),
               badge: groupCount,
               onTap: onGroups),
           _QuickAction(
+              id: 'trash',
               icon: CupertinoIcons.trash,
-              label: '回收站',
+              label: l10n.quickTrash,
               tint: Ios.orange(b),
               badge: trashCount,
               onTap: onTrash),
           _QuickAction(
+              id: 'report',
               icon: CupertinoIcons.chart_bar,
-              label: '清理报告',
+              label: l10n.quickReport,
               tint: Ios.green(b),
               onTap: onReport),
           _QuickAction(
+              id: 'memories',
               icon: CupertinoIcons.sparkles,
-              label: '记忆',
+              label: l10n.quickMemories,
               tint: Ios.purple(b),
               onTap: onMemories),
         ],
@@ -354,6 +598,7 @@ class _QuickActions extends StatelessWidget {
 
 class _QuickAction extends StatelessWidget {
   const _QuickAction({
+    required this.id,
     required this.icon,
     required this.label,
     required this.tint,
@@ -361,6 +606,8 @@ class _QuickAction extends StatelessWidget {
     required this.onTap,
   });
 
+  /// 稳定标识：Widget key 不能跟着语言变，否则换语言后测试/自动化找不到入口
+  final String id;
   final IconData icon;
   final String label;
   final Color tint;
@@ -369,11 +616,10 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final b = theme.brightness;
+    final b = Theme.of(context).brightness;
     return Expanded(
       child: IosPressable(
-        key: ValueKey('qa_$label'),
+        key: ValueKey('qa_$id'),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -383,39 +629,54 @@ class _QuickAction extends StatelessWidget {
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
-                      color: tint.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
+                      color: tint.withValues(alpha: 0.13),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Icon(icon, size: 22, color: tint),
+                    child: Icon(icon, size: 24, color: tint),
                   ),
                   if (badge > 0)
                     Positioned(
-                      right: -4,
-                      top: -4,
+                      right: -5,
+                      top: -5,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 18),
+                        height: 18,
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
                         decoration: BoxDecoration(
                           color: Ios.red(b),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(color: Ios.bg(b), width: 1.5),
                         ),
-                        child: Text(
-                          '$badge',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                        child: Center(
+                          child: Text(
+                            '$badge',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              height: 1.1,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
                     ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(label, style: theme.textTheme.bodySmall),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Ios.label(b),
+                  fontSize: 12,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ),
@@ -424,9 +685,72 @@ class _QuickAction extends StatelessWidget {
   }
 }
 
-/// 毛玻璃悬浮胶囊主按钮（对应 iOS 悬浮主操作）
-class _ScanCapsule extends StatelessWidget {
-  const _ScanCapsule({required this.running, required this.onTap});
+/// 最近照片为空：圆形图标底 + 单行说明，视觉重心更稳
+class _RecentEmptyState extends StatelessWidget {
+  const _RecentEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final b = theme.brightness;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 36, 32, 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 108,
+            height: 108,
+            child: Stack(
+              children: [
+                Container(
+                  width: 108,
+                  height: 108,
+                  decoration: BoxDecoration(
+                    color: Ios.fill(b),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    CupertinoIcons.photo,
+                    size: 44,
+                    color: Ios.secondaryLabel(b),
+                  ),
+                ),
+                Positioned(
+                  right: 24,
+                  bottom: 28,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: Ios.card(b),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      CupertinoIcons.plus,
+                      size: 15,
+                      color: Ios.blue(b),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            context.l10n.recentEmptyTitle,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineSmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 底部主行动：渐变遮罩 + 整宽蓝色胶囊
+class _BottomScanBar extends StatelessWidget {
+  const _BottomScanBar({required this.running, required this.onTap});
 
   final bool running;
   final VoidCallback onTap;
@@ -434,48 +758,72 @@ class _ScanCapsule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final b = Theme.of(context).brightness;
-    return IosPressable(
-      onTap: onTap,
-      scale: 0.95,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              color: Ios.blue(b).withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Ios.blue(b).withValues(alpha: 0.35),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
+    final bg = Ios.bg(b);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IgnorePointer(
+            child: Container(
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [bg.withValues(alpha: 0), bg],
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  running ? CupertinoIcons.hourglass : CupertinoIcons.search,
-                  size: 20,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  running ? '扫描中…' : '开始扫描',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.41,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+          Container(
+            color: bg,
+            padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 12),
+            child: IosPressable(
+              onTap: running ? null : onTap,
+              scale: 0.97,
+              child: Container(
+                height: 54,
+                decoration: BoxDecoration(
+                  color: Ios.blue(b).withValues(alpha: running ? 0.6 : 1),
+                  borderRadius: BorderRadius.circular(27),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Ios.blue(b).withValues(alpha: 0.28),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      running
+                          ? CupertinoIcons.hourglass
+                          : CupertinoIcons.search,
+                      size: 20,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      running ? context.l10n.scanning : context.l10n.startScan,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.41,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -493,6 +841,7 @@ class _PermissionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final b = theme.brightness;
+    final l10n = context.l10n;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
@@ -503,7 +852,7 @@ class _PermissionCard extends StatelessWidget {
                 size: 72, color: Ios.blue(b)),
             const SizedBox(height: 20),
             Text(
-              '整理重复照片，需要一个相册权限',
+              l10n.permissionTitle,
               style: theme.textTheme.headlineMedium,
               textAlign: TextAlign.center,
             ),
@@ -513,12 +862,11 @@ class _PermissionCard extends StatelessWidget {
                 TextSpan(
                   style: theme.textTheme.bodyMedium,
                   children: [
-                    const TextSpan(
-                        text: '为了帮您找到重复照片，我们需要读取相册。\n所有分析均在手机本地完成，'),
+                    TextSpan(text: l10n.permissionBodyLead),
                     TextSpan(
-                        text: '绝不联网上传',
+                        text: l10n.permissionBodyStrong,
                         style: const TextStyle(fontWeight: FontWeight.w600)),
-                    const TextSpan(text: '。'),
+                    TextSpan(text: l10n.permissionBodyTail),
                   ],
                 ),
                 textAlign: TextAlign.center,
@@ -526,7 +874,7 @@ class _PermissionCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '您可以选择「部分照片」授权，App 会优雅降级；\n图片也不会离开您的设备。',
+              l10n.permissionNote,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: Ios.tertiaryLabel(b)),
               textAlign: TextAlign.center,
@@ -534,13 +882,13 @@ class _PermissionCard extends StatelessWidget {
             const SizedBox(height: 24),
             CupertinoButton.filled(
               onPressed: onGrant,
-              child: const Text('授权访问相册'),
+              child: Text(l10n.grantAccess),
             ),
             const SizedBox(height: 4),
             CupertinoButton(
               onPressed: onOpenSettings,
               child: Text(
-                '前往系统设置开启',
+                l10n.openSystemSettings,
                 style: TextStyle(color: Ios.blue(b), fontSize: 15),
               ),
             ),

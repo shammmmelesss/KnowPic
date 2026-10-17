@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/ios_design.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../models/group_type.dart';
 import '../models/similar_group.dart';
 import 'ios_ui.dart';
@@ -85,12 +86,14 @@ class GroupCard extends StatelessWidget {
                   children: [
                     Icon(_icon(b), size: 17, color: Ios.blue(b)),
                     const SizedBox(width: 5),
-                    Text(group.type.label, style: theme.textTheme.titleSmall),
+                    Text(context.l10n.groupType(group.type),
+                        style: theme.textTheme.titleSmall),
                   ],
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${group.size} 张 · ${Ios.formatBytes(group.totalBytes)}',
+                  context.l10n.groupSize(
+                      group.size, Ios.formatBytes(group.totalBytes)),
                   style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),
@@ -99,13 +102,14 @@ class GroupCard extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     IosBadge(
-                      label: '可释放 ${Ios.formatBytes(reclaimableBytes)}',
+                      label: context.l10n
+                          .reclaimableBytes(Ios.formatBytes(reclaimableBytes)),
                       color: Ios.blue(b).withValues(alpha: 0.12),
                       fg: Ios.blue(b),
                     ),
                     if (group.bestId.isNotEmpty)
                       IosBadge(
-                        label: 'AI 最佳',
+                        label: context.l10n.aiBest,
                         icon: CupertinoIcons.star_fill,
                         color: Ios.orange(b).withValues(alpha: 0.15),
                         fg: Ios.orange(b),

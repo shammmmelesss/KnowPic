@@ -9,6 +9,7 @@ class AppSettings {
   AppSettings({
     this.helpImprove = false,
     this.confirmBeforeDelete = true,
+    this.languageMode = 'system',
     this.lastScanAt,
   });
 
@@ -18,16 +19,21 @@ class AppSettings {
   /// 清理前二次确认（默认开）
   bool confirmBeforeDelete;
 
+  /// 显示语言：'system' | 'zh' | 'en'（默认跟随系统）
+  String languageMode;
+
   DateTime? lastScanAt;
 
   AppSettings copyWith({
     bool? helpImprove,
     bool? confirmBeforeDelete,
+    String? languageMode,
     DateTime? lastScanAt,
   }) {
     return AppSettings(
       helpImprove: helpImprove ?? this.helpImprove,
       confirmBeforeDelete: confirmBeforeDelete ?? this.confirmBeforeDelete,
+      languageMode: languageMode ?? this.languageMode,
       lastScanAt: lastScanAt ?? this.lastScanAt,
     );
   }
@@ -35,6 +41,7 @@ class AppSettings {
   Map<String, dynamic> toJson() => {
         'helpImprove': helpImprove,
         'confirmBeforeDelete': confirmBeforeDelete,
+        'languageMode': languageMode,
         'lastScanAt': lastScanAt?.toIso8601String(),
       };
 
@@ -42,6 +49,7 @@ class AppSettings {
     return AppSettings(
       helpImprove: json['helpImprove'] as bool? ?? false,
       confirmBeforeDelete: json['confirmBeforeDelete'] as bool? ?? true,
+      languageMode: json['languageMode'] as String? ?? 'system',
       lastScanAt: DateTime.tryParse(json['lastScanAt'] as String? ?? ''),
     );
   }

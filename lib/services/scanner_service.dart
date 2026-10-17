@@ -69,10 +69,10 @@ class ScannerService {
     _running = true;
     final sw = Stopwatch()..start();
     try {
-      progress.value = const ScanProgress(phase: ScanPhase.reading, message: '正在读取相册…');
+      progress.value = const ScanProgress(phase: ScanPhase.reading);
 
       final photos = await _library.loadAllPhotos(onProgress: (done) {
-        progress.value = progress.value.copyWith(current: done, message: '正在读取相册（$done）…');
+        progress.value = progress.value.copyWith(current: done);
       });
 
       final currentIds = {for (final p in photos) p.id};
@@ -112,7 +112,6 @@ class ScannerService {
         progress.value = ScanProgress(
           phase: ScanPhase.analyzing,
           total: toAnalyze.length,
-          message: '正在提取特征…',
         );
         var done = 0;
         for (final batch in _chunks(toAnalyze, AppConfig.batchSize)) {
@@ -147,22 +146,19 @@ class ScannerService {
             );
           }
           done += batch.length;
-          progress.value = progress.value.copyWith(
-            current: done,
-            message: '正在提取特征（$done/${toAnalyze.length}）…',
-          );
+          progress.value = progress.value.copyWith(current: done);
         }
       }
 
-      progress.value = const ScanProgress(phase: ScanPhase.clustering, message: '正在聚类分组…');
+      progress.value = const ScanProgress(phase: ScanPhase.clustering);
       final allAssets = merged.values.toList();
-      // 聚类为 O(n²) CPU 密集操作，放隔离区避免阻塞 UI
+      // 聚类为 O(n²) CPU 密集操作，放隔离区避免阻塞 UI。
+      // 闭包必须在顶层函数里构造：写在实例方法里会隐式带上 ScannerService，
+      // 其 progress 监听器链到 Riverpod 控制器（含 _Future 等不可发送对象），
+      // 序列化必然失败并退回主隔离区执行，O(n²) 聚类会卡住 UI。
       List<SimilarGroup> groups;
       try {
-        // 先取到局部变量：闭包直接引用字段会捕获 this（含 ValueNotifier 监听器等不可发送对象），
-        // 导致 Isolate.run 必然失败并退回主隔离区执行，O(n²) 聚类会卡住 UI
-        final similarity = _similarity;
-        groups = await Isolate.run(() => similarity.clusterAndClassify(allAssets));
+        groups = await _clusterInIsolate(allAssets);
       } catch (err) {
         Log.e('Scanner', 'isolate cluster failed, fallback to main isolate', err);
         groups = _similarity.clusterAndClassify(allAssets);
@@ -175,7 +171,7 @@ class ScannerService {
         g.bestId = _ranking.pickBest(members) ?? '';
       }
 
-      progress.value = const ScanProgress(phase: ScanPhase.saving, message: '正在保存…');
+      progress.value = const ScanProgress(phase: ScanPhase.saving);
       await _store.replaceAll(allAssets, groups);
 
       sw.stop();
@@ -183,7 +179,6 @@ class ScannerService {
         phase: ScanPhase.done,
         current: toAnalyze.length,
         total: toAnalyze.length,
-        message: '扫描完成',
         elapsedMs: sw.elapsedMilliseconds,
       );
       Log.d('Scanner', 'scan done in ${sw.elapsedMilliseconds}ms '
@@ -195,7 +190,7 @@ class ScannerService {
         elapsedMs: sw.elapsedMilliseconds,
       );
     } catch (err) {
-      progress.value = const ScanProgress(phase: ScanPhase.failed, message: '扫描失败');
+      progress.value = const ScanProgress(phase: ScanPhase.failed);
       Log.e('Scanner', 'scan failed', err);
       rethrow;
     } finally {
@@ -217,7 +212,7 @@ class ScannerService {
   Future<List<_PhotoAnalysis?>> _analyzeBatch(List<Uint8List> thumbnails) async {
     if (thumbnails.isEmpty) return const [];
     try {
-      return await Isolate.run(() => _analyzePhotos(thumbnails));
+      return await _analyzeInIsolate(thumbnails);
     } catch (err) {
       Log.e('Scanner', 'isolate analyze failed, fallback to main isolate', err);
       return _analyzePhotos(thumbnails);
@@ -233,6 +228,18 @@ class ScannerService {
     return out;
   }
 }
+
+/// 在隔离区聚类：顶层函数内的闭包只捕获 [assets]，不会带上调用方的实例上下文
+Future<List<SimilarGroup>> _clusterInIsolate(List<PhotoAsset> assets) =>
+    Isolate.run(() => _clusterAssets(assets));
+
+/// 隔离区内实际执行的聚类（SimilarityService 无状态，可在隔离区直接新建）
+List<SimilarGroup> _clusterAssets(List<PhotoAsset> assets) =>
+    SimilarityService().clusterAndClassify(assets);
+
+/// 在隔离区批量分析：同样用顶层函数构造闭包，避免捕获实例上下文
+Future<List<_PhotoAnalysis?>> _analyzeInIsolate(List<Uint8List> thumbnails) =>
+    Isolate.run(() => _analyzePhotos(thumbnails));
 
 /// 供 Isolate.run 调用的顶层函数（纯 Dart，可跨隔离区传输）
 /// 返回列表与输入一一对应（失败项为 null），调用方按下标配对，不能跳过元素

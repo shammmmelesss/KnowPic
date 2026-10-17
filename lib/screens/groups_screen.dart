@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ios_design.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../providers/providers.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/group_card.dart';
@@ -25,21 +26,20 @@ class GroupsScreen extends ConsumerWidget {
       (sum, g) => sum + similarity.estimateReclaimable(g, assets),
     );
 
+    final l10n = context.l10n;
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar.large(
-            title: const Text('相似组'),
-            backgroundColor: Colors.transparent,
-            flexibleSpace: frostedLargeTitleBar(context, title: '相似组'),
-          ),
+          // 二级页按 iOS 惯例居中标题，同样去掉大标题的整块留白
+          frostedSliverAppBar(context,
+              title: l10n.groupsTitle, centerTitle: true),
           if (groups.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
               child: EmptyState(
                 icon: CupertinoIcons.photo_on_rectangle,
-                title: '还没有相似组',
-                subtitle: '回到首页点击「开始扫描」，自动识别连拍、截图与重复照片',
+                title: l10n.groupsEmptyTitle,
+                subtitle: l10n.groupsEmptySubtitle,
               ),
             )
           else
@@ -59,7 +59,8 @@ class GroupsScreen extends ConsumerWidget {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                '共 ${groups.length} 组相似照片，一键清理可释放约 ${Ios.formatBytes(totalReclaim)}',
+                                l10n.groupsSummary(
+                                    groups.length, Ios.formatBytes(totalReclaim)),
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                             ),

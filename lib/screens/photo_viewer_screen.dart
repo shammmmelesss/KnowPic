@@ -1,9 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../core/ios_design.dart';
+import '../l10n/app_strings_delegate.dart';
 import '../models/photo_asset.dart';
 import '../widgets/photo_thumb.dart';
 
@@ -128,7 +128,7 @@ class _TopBar extends StatelessWidget {
                 child: IconButton(
                   icon: const Icon(CupertinoIcons.xmark,
                       color: Colors.white, size: 22),
-                  tooltip: '关闭',
+                  tooltip: context.l10n.close,
                   onPressed: onClose,
                 ),
               ),
@@ -174,7 +174,7 @@ class _InfoBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            DateFormat('yyyy年M月d日 HH:mm').format(asset.createdTime),
+            context.l10n.formatDateTime(asset.createdTime),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 15,
