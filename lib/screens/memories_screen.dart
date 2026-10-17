@@ -13,6 +13,16 @@ import '../widgets/ios_ui.dart';
 import '../widgets/photo_thumb.dart';
 import 'photo_viewer_screen.dart';
 
+/// 打开全屏查看器（盲盒页与那年今日页共用）
+void _openViewer(BuildContext context, List<PhotoAsset> photos, int index) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => PhotoViewerScreen(assets: photos, initialIndex: index),
+    ),
+  );
+}
+
 /// 记忆盲盒 & 那年今日（对应文档 Phase 3 生态与体验）
 class MemoriesScreen extends ConsumerStatefulWidget {
   const MemoriesScreen({super.key});
@@ -117,15 +127,6 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
     });
   }
 
-  void _openViewer(List<PhotoAsset> photos, int index) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PhotoViewerScreen(assets: photos, initialIndex: index),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -178,7 +179,7 @@ class _BlindBoxTabState extends ConsumerState<_BlindBoxTab> {
                 fit: StackFit.expand,
                 children: [
                   GestureDetector(
-                    onTap: () => _openViewer([photo], 0),
+                    onTap: () => _openViewer(context, [photo], 0),
                     child: PhotoThumb(
                       key: ValueKey(photo.id),
                       assetId: photo.id,
@@ -263,7 +264,7 @@ class _TodayInHistoryTab extends ConsumerWidget {
         final p = photos[i];
         return GestureDetector(
           key: ValueKey(p.id),
-          onTap: () => _openViewer(photos, i),
+          onTap: () => _openViewer(context, photos, i),
           child: Stack(
             fit: StackFit.expand,
             children: [

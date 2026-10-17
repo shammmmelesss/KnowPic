@@ -717,7 +717,7 @@ class _CarouselPhoto extends StatelessWidget {
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              CupertinoIcons.plus_magnifyingglass,
+                              CupertinoIcons.zoom_in,
                               size: 16,
                               color: Colors.white,
                             ),
