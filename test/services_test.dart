@@ -119,9 +119,10 @@ void main() {
         _asset('low', baseScore: 3, dHash: 1),
         _asset('high', baseScore: 9, dHash: 2),
       ];
-      ranking.sortGroup(members);
-      expect(members.first.id, 'high');
-      expect(members.first.finalScore, closeTo(0.4 * 9 + 0.6 * 1.0, 1e-6));
+      // sortGroup 返回新列表，不修改入参（避免 build 期间 mutate 共享状态）
+      final sorted = ranking.sortGroup(members);
+      expect(sorted.first.id, 'high');
+      expect(sorted.first.finalScore, closeTo(0.4 * 9 + 0.6 * 1.0, 1e-6));
       expect(ranking.pickBest(members), 'high');
     });
 
@@ -238,8 +239,8 @@ void main() {
       final a = _asset('a', sceneType: AppConfig.sceneLandscape, baseScore: 5, features: posF);
       final b = _asset('b', sceneType: AppConfig.sceneLandscape, baseScore: 5, features: negF);
       final members = [b, a];
-      ranking.sortGroup(members);
-      expect(members.first.id, 'a', reason: '风景模型偏好特征[0]，a 应排前');
+      final sorted = ranking.sortGroup(members);
+      expect(sorted.first.id, 'a', reason: '风景模型偏好特征[0]，a 应排前');
       // 其他场景模型未训练 → 冷启动，不应影响风景组排序
       expect(store.preferences[AppConfig.scenePortrait], isNull);
     });

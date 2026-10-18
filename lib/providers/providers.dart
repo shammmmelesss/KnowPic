@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/logger.dart';
 import '../l10n/app_strings.dart';
 import '../models/photo_asset.dart';
 import '../models/scan_progress.dart';
@@ -16,6 +17,7 @@ import '../services/photo_library_service.dart';
 import '../services/ranking_service.dart';
 import '../services/report_service.dart';
 import '../services/scanner_service.dart';
+import '../services/secure_key_service.dart';
 import '../services/similarity_service.dart';
 import '../services/trash_service.dart';
 
@@ -23,6 +25,11 @@ import '../services/trash_service.dart';
 
 final storeProvider = Provider<MetadataStore>(
   (ref) => throw UnimplementedError('MetadataStore 需在 main 中注入'),
+);
+
+/// 偏好导出/导入用的密钥（iOS 走钥匙串，见 SecureKeyService）
+final secureKeyProvider = Provider<SecureKeyService>(
+  (ref) => SecureKeyService(ref.watch(storeProvider).rootDir),
 );
 
 final settingsProvider = NotifierProvider<SettingsController, AppSettings>(
@@ -118,16 +125,21 @@ class PermissionController extends Notifier<bool> {
       try {
         final lib = ref.read(libraryProvider);
         var ok = await lib.checkPermission();
+        if (!ref.mounted) return;
         if (!ok) {
           final store = ref.read(storeProvider);
           if (store.assets.isEmpty) return; // 首次使用：等待用户主动授权
           ok = await lib.requestPermission();
         }
+        // await 之后 provider 可能已被 dispose：先确认还活着再写 state
+        if (!ref.mounted) return;
         if (ok && !state) {
           state = true;
           ref.invalidate(recentPhotosProvider);
         }
-      } catch (_) {}
+      } catch (err) {
+        Log.e('Permission', 'restore permission failed', err);
+      }
     }();
     return ref.watch(libraryProvider).hasPermission;
   }
@@ -146,10 +158,12 @@ class PermissionController extends Notifier<bool> {
   Future<void> recheck() async {
     try {
       final ok = await ref.read(libraryProvider).checkPermission();
-      if (ok == state) return;
+      if (!ref.mounted || ok == state) return;
       state = ok;
       if (ok) ref.invalidate(recentPhotosProvider);
-    } catch (_) {}
+    } catch (err) {
+      Log.e('Permission', 'recheck failed', err);
+    }
   }
 }
 
@@ -207,10 +221,17 @@ class ScanProgressController extends Notifier<ScanProgress> {
       }
       await ref.read(settingsProvider.notifier).updateLastScan();
       return true;
-    } catch (_) {
+    } on ScanCanceledException {
+      return false;
+    } catch (err) {
+      // 静默吞掉会让「扫描失败」无从诊断，至少落到日志
+      Log.e('Scan', 'startScan failed', err);
       return false;
     }
   }
+
+  /// 取消进行中的扫描
+  void cancelScan() => ref.read(scannerProvider).cancel();
 
   bool get isBusy => state.isRunning || ref.read(scannerProvider).isRunning;
 }

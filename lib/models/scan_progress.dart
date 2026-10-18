@@ -9,6 +9,11 @@ enum ScanPhase {
   failed,
 }
 
+/// 用户主动取消扫描（ScannerService.cancel 后在下一个检查点抛出）
+class ScanCanceledException implements Exception {
+  const ScanCanceledException();
+}
+
 /// 扫描进度状态
 class ScanProgress {
   /// 阶段文案由 l10n 依 [phase]/[current]/[total] 生成，此处只存数据

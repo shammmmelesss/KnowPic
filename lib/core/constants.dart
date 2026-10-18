@@ -20,6 +20,7 @@ class AppConfig {
   static const int batchSize = 8; // 批量推理并发数
   static const int scanPageSize = 300; // 相册分页大小
   static const int scanProbeConcurrency = 32; // 本地可用性探测并发数（平台通道调用，串行太慢）
+  static const int maxClusterAssets = 20000; // 聚类规模上限：聚类是 O(n²)，超量相册必须截断
 
   // ---- 持久化 ----
   static const int storeIsolateThreshold = 1000; // 资产数超过此值时在隔离区编码持久化数据

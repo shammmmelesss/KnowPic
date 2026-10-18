@@ -58,6 +58,19 @@ class ScannerService {
   bool _running = false;
   bool get isRunning => _running;
 
+  bool _canceled = false;
+
+  /// 请求取消当前扫描（在下一个检查点抛出 ScanCanceledException）。
+  /// 大相册的聚类可能跑很久，没有取消入口用户只能干等或杀进程。
+  void cancel() {
+    if (!_running) return;
+    _canceled = true;
+  }
+
+  void _throwIfCanceled() {
+    if (_canceled) throw const ScanCanceledException();
+  }
+
   /// 全量扫描
   Future<ScanResult> fullScan() => _scan(incremental: false);
 
@@ -67,6 +80,7 @@ class ScannerService {
   Future<ScanResult> _scan({required bool incremental}) async {
     if (_running) throw StateError('scan already running');
     _running = true;
+    _canceled = false;
     final sw = Stopwatch()..start();
     try {
       progress.value = const ScanProgress(phase: ScanPhase.reading);
@@ -74,6 +88,7 @@ class ScannerService {
       final photos = await _library.loadAllPhotos(onProgress: (done) {
         progress.value = progress.value.copyWith(current: done);
       });
+      _throwIfCanceled();
 
       final currentIds = {for (final p in photos) p.id};
       // 已从系统相册移除的资产清理
@@ -148,21 +163,39 @@ class ScannerService {
           done += batch.length;
           progress.value = progress.value.copyWith(current: done);
         }
+        _throwIfCanceled();
       }
 
-      progress.value = const ScanProgress(phase: ScanPhase.clustering);
       final allAssets = merged.values.toList();
+      // O(n²) 聚类：超出上限时只聚最新的部分，避免数万张照片让这一步跑几分钟
+      var clusterInput = allAssets;
+      if (clusterInput.length > AppConfig.maxClusterAssets) {
+        clusterInput = (clusterInput.toList()
+              ..sort((a, b) => b.createdTime.compareTo(a.createdTime)))
+            .take(AppConfig.maxClusterAssets)
+            .toList();
+        Log.d('Scanner',
+            'cluster capped at ${clusterInput.length}/${allAssets.length}');
+      }
+      _throwIfCanceled();
+
+      progress.value = ScanProgress(
+        phase: ScanPhase.clustering,
+        total: clusterInput.length,
+      );
       // 聚类为 O(n²) CPU 密集操作，放隔离区避免阻塞 UI。
       // 闭包必须在顶层函数里构造：写在实例方法里会隐式带上 ScannerService，
       // 其 progress 监听器链到 Riverpod 控制器（含 _Future 等不可发送对象），
       // 序列化必然失败并退回主隔离区执行，O(n²) 聚类会卡住 UI。
       List<SimilarGroup> groups;
       try {
-        groups = await _clusterInIsolate(allAssets);
+        groups = await _clusterInIsolate(clusterInput);
       } catch (err) {
         Log.e('Scanner', 'isolate cluster failed, fallback to main isolate', err);
-        groups = _similarity.clusterAndClassify(allAssets);
+        groups = _similarity.clusterAndClassify(clusterInput);
       }
+      _throwIfCanceled();
+      progress.value = progress.value.copyWith(current: clusterInput.length);
 
       // AI 推荐：每组选出"最佳"并计算综合分
       final byId = merged;
@@ -189,12 +222,17 @@ class ScannerService {
         groups: groups.length,
         elapsedMs: sw.elapsedMilliseconds,
       );
+    } on ScanCanceledException {
+      // 用户主动取消：回到 idle，不算失败
+      progress.value = const ScanProgress();
+      rethrow;
     } catch (err) {
       progress.value = const ScanProgress(phase: ScanPhase.failed);
       Log.e('Scanner', 'scan failed', err);
       rethrow;
     } finally {
       _running = false;
+      _canceled = false;
     }
   }
 
@@ -256,7 +294,7 @@ List<_PhotoAnalysis?> _analyzePhotos(List<Uint8List> thumbnails) {
       final dHash = PerceptualHash.dHash(decoded);
       out.add(_PhotoAnalysis(dHash, analysis));
     } catch (err) {
-      debugPrint('analyze photo failed: $err');
+      Log.e('Scanner', 'analyze photo failed', err);
       out.add(null);
     }
   }

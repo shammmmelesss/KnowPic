@@ -37,6 +37,7 @@ class TrashService {
     final skipped = <String>[];
     final skippedSet = <String>{};
     var freed = 0;
+    var seq = 0;
 
     for (final id in ids) {
       final asset = byId[id];
@@ -45,30 +46,35 @@ class TrashService {
         skippedSet.add(id);
         continue;
       }
-      // 云占位符等无法取回原图 → 跳过并提示（文档 12.1）
-      final bytes = await _library.loadOriginalBytes(id);
-      if (bytes == null || bytes.isEmpty) {
-        skipped.add(id);
-        skippedSet.add(id);
-        Log.d('Trash', 'skip $id (no local data)');
-        continue;
-      }
       final ext = _safeExt(asset.title);
-      final fileName = '${_safeId(id)}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      // 序号进文件名：同一毫秒内批量删除不会产生重名
+      // （重名会让后写的备份覆盖先写的，还原时拿回错误的照片）
+      final fileName =
+          '${_safeId(id)}_${DateTime.now().millisecondsSinceEpoch}_$seq.$ext';
+      seq++;
       final deletedAt = DateTime.now();
       final item = TrashItem(
         id: id,
         originalTitle: asset.title.isEmpty ? fileName : asset.title,
         savedFileName: fileName,
-        byteSize: bytes.length,
+        byteSize: asset.byteSize,
         deletedAt: deletedAt,
         expiresAt: deletedAt.add(const Duration(days: AppConfig.trashRetentionDays)),
         isLivePhoto: asset.isLivePhoto,
       );
-      // 写入路径统一走 trashFileOf（内部做文件名消毒，防路径穿越）
-      await _store.trashFileOf(item).writeAsBytes(bytes, flush: true);
+      // 写入路径统一走 trashFileOf（内部做文件名消毒，防路径穿越）。
+      // 流式拷贝：原图不整块读入内存，避免大图批量清理时 OOM。
+      final copied =
+          await _library.copyOriginalToFile(id, _store.trashFileOf(item));
+      if (!copied) {
+        // 云占位符等无法取回原图 → 跳过并提示（文档 12.1）
+        skipped.add(id);
+        skippedSet.add(id);
+        Log.d('Trash', 'skip ${_short(id)} (no local data)');
+        continue;
+      }
       trashed.add(item);
-      freed += bytes.length;
+      freed += asset.byteSize;
     }
 
     final toDelete = ids.where((id) => !skippedSet.contains(id)).toList();
@@ -118,7 +124,7 @@ class TrashService {
         _store.trashItems.remove(item);
         restored.add(id);
       } catch (err) {
-        Log.e('Trash', 'restore failed: $id', err);
+        Log.e('Trash', 'restore failed: ${_short(id)}', err);
       }
     }
     await _store.saveTrash();
@@ -149,11 +155,18 @@ class TrashService {
       if (await f.exists()) await f.delete();
       _store.trashItems.remove(item);
     }
+    // 对账：清掉 manifest 里没有记录的孤儿备份文件
+    // （备份写盘成功、manifest 尚未写入时崩溃 → 文件永远不会被回收）
+    await _store.cleanOrphanTrashFiles();
     if (expired.isNotEmpty) {
       await _store.saveTrash();
     }
     return expired.length;
   }
+
+  /// 资产 id 属于相册内部标识，日志只保留前 8 位
+  static String _short(String id) =>
+      id.length <= 8 ? id : '${id.substring(0, 8)}…';
 
   /// 资产 id 仅保留安全字符，避免拼进文件名后产生路径穿越
   String _safeId(String id) {

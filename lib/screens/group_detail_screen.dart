@@ -65,7 +65,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         ..clear()
         ..addAll(group.bestId.isEmpty ? <String>[] : {group.bestId});
     }
-    if (_currentIndex >= members.length) _currentIndex = members.length - 1;
+    // 钳位到合法区间：members 可能被后台扫描/清理刷新为空或变短，
+    // 单独写 length - 1 会在空列表时得到 -1，回调里就成了 members[-1] 崩溃
+    if (_currentIndex >= members.length || _currentIndex < 0) {
+      _currentIndex = members.isEmpty ? 0 : members.length - 1;
+    }
 
     final best = members.isEmpty ? null : members.first;
     // 推荐理由由 l10n 解析枚举；不足 2 张时 ranking 直接返回 onlyChoice
@@ -356,13 +360,17 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
   }
 
   void _onPageChanged(List<PhotoAsset> members, int index) {
+    // 回调可能在列表已被刷新（变空/变短）后触发，先守住下标再取元素
+    if (members.isEmpty || index < 0 || index >= members.length) return;
+    final prev =
+        (_currentIndex >= 0 && _currentIndex < members.length) ? _currentIndex : null;
     // 隐式反馈：停留 >1.5s → 正样本；快速划走 → 负样本（文档 8.2）
     final now = DateTime.now();
-    final start = _viewStart[members[_currentIndex].id];
-    if (start != null) {
+    final start = prev == null ? null : _viewStart[members[prev].id];
+    if (start != null && prev != null) {
       final dwell = now.difference(start).inMilliseconds / 1000.0;
       ref.read(learningProvider).collect(UserAction(
-            assetId: members[_currentIndex].id,
+            assetId: members[prev].id,
             groupId: widget.groupId,
             type: dwell >= AppConfig.positiveViewDuration
                 ? ActionType.viewLong

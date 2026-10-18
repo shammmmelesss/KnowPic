@@ -128,18 +128,21 @@ class PreferenceModel {
         'lastUpdated': lastUpdated?.toIso8601String(),
       };
 
+  /// dim 的合理上限：磁盘文件可能被损坏或被篡改，
+  /// 不加约束的话一个巨大的 dim 会直接撑爆内存 / 让点积越界
+  static const int maxDim = 4096;
+
   factory PreferenceModel.fromJson(Map<String, dynamic> json) {
-    final dim = json['dim'] as int? ?? AppConfig.featureDim;
+    final rawDim = json['dim'] as int?;
+    // dim 不合法（缺失/非正数/超上限）→ 回退默认维度
+    final dim =
+        (rawDim == null || rawDim <= 0 || rawDim > maxDim) ? AppConfig.featureDim : rawDim;
     final model = PreferenceModel(dim: dim);
-    model.weights = (json['weights'] as List<dynamic>? ?? List.filled(dim, 0.5))
-        .map((e) => (e as num).toDouble())
-        .toList();
-    model.z = (json['z'] as List<dynamic>? ?? List.filled(dim, 0.0))
-        .map((e) => (e as num).toDouble())
-        .toList();
-    model.n = (json['n'] as List<dynamic>? ?? List.filled(dim, 0.0))
-        .map((e) => (e as num).toDouble())
-        .toList();
+    // 长度必须与 dim 一致，否则后续 VectorMath.dot 会越界崩溃，
+    // 而崩溃点在组详情页 build 里 → 每次进入必崩、重启仍崩
+    model.weights = _readVector(json['weights'], dim, 0.5);
+    model.z = _readVector(json['z'], dim, 0.0);
+    model.n = _readVector(json['n'], dim, 0.0);
     model.bias = (json['bias'] as num?)?.toDouble() ?? 0;
     model.zBias = (json['zBias'] as num?)?.toDouble() ?? 0;
     model.nBias = (json['nBias'] as num?)?.toDouble() ?? 0;
@@ -147,6 +150,20 @@ class PreferenceModel {
     model.resetCount = json['resetCount'] as int? ?? 0;
     model.lastUpdated = DateTime.tryParse(json['lastUpdated'] as String? ?? '');
     return model;
+  }
+
+  /// 读取向量：长度不等于 [dim] 或元素非数值时整体回退为 [fill]，
+  /// 保证返回的数组长度恒等于 dim。
+  static List<double> _readVector(Object? value, int dim, double fill) {
+    if (value is List && value.length == dim) {
+      final out = List<double>.filled(dim, fill);
+      for (var i = 0; i < dim; i++) {
+        final e = value[i];
+        if (e is num) out[i] = e.toDouble();
+      }
+      return out;
+    }
+    return List<double>.filled(dim, fill);
   }
 
   static double _sigmoid(double x) {

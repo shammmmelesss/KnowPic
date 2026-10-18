@@ -107,6 +107,7 @@ abstract class AppStrings {
   String get scanTitle;
   String get scanIdleSubtitle;
   String get scanClusteringSubtitle;
+  String get cancelScan;
   String get scanSavingSubtitle;
   String get analyzeTitle;
   String analyzePipeline(int current, int total);
@@ -217,7 +218,15 @@ abstract class AppStrings {
   String get exportPref;
   String get exportPrefSubtitle;
   String get exportPrefText;
+  String get exportPrefDialogTitle;
+  String get exportPrefDialogContent;
   String exportFailed(Object err);
+  String get importPref;
+  String get importPrefSubtitle;
+  String get importPrefDialogTitle;
+  String importPrefDialogContent(int scenes, int samples);
+  String importSuccess(int scenes);
+  String importFailed(Object err);
   String get sceneDetailTitle;
   String get sceneDetailIntro;
   String samplesCount(int count);
@@ -359,6 +368,8 @@ class StringsZh extends AppStrings {
   String get scanIdleSubtitle => '点击「开始扫描」即可整理相册';
   @override
   String get scanClusteringSubtitle => '按 dHash 感知哈希识别相似照片…';
+  @override
+  String get cancelScan => '取消扫描';
   @override
   String get scanSavingSubtitle => '写入特征库与分组索引…';
   @override
@@ -556,9 +567,28 @@ class StringsZh extends AppStrings {
   @override
   String get exportPref => '导出偏好';
   @override
-  String get exportPrefSubtitle => '加密偏好文件（几 KB），可自行备份迁移';
+  String get exportPrefSubtitle => '加密偏好文件（.kpic，几 KB），可自行备份迁移';
   @override
   String get exportPrefText => 'KnowPic 偏好模型导出（请妥善保管）';
+  @override
+  String get exportPrefDialogTitle => '导出偏好数据？';
+  @override
+  String get exportPrefDialogContent =>
+      '将生成加密文件（.kpic）并交给系统分享，文件会离开本应用（可能存到「文件」App 或发给他人）。'
+      '内容是加密的，只有本设备能解密；请妥善保管。';
+  @override
+  String get importPref => '导入偏好';
+  @override
+  String get importPrefSubtitle => '从加密备份文件（.kpic）恢复偏好模型';
+  @override
+  String get importPrefDialogTitle => '导入并覆盖当前偏好？';
+  @override
+  String importPrefDialogContent(int scenes, int samples) =>
+      '将用文件中的 $scenes 个场景模型（共 $samples 条学习样本）覆盖本机现有的偏好数据。';
+  @override
+  String importSuccess(int scenes) => '已导入 $scenes 个场景偏好';
+  @override
+  String importFailed(Object err) => '导入失败：$err';
   @override
   String exportFailed(Object err) => '导出失败：$err';
   @override
@@ -576,7 +606,7 @@ class StringsZh extends AppStrings {
   @override
   String get helpImprove => '帮助改进产品';
   @override
-  String get helpImproveSubtitle => '仅上传脱敏统计（采纳率等），不含任何图片信息';
+  String get helpImproveSubtitle => '仅在本机统计（采纳率等），不含任何图片信息，也不会上传';
   @override
   String get confirmBeforeDelete => '清理前二次确认';
   @override
@@ -792,6 +822,8 @@ class StringsEn extends AppStrings {
   String get scanClusteringSubtitle =>
       'Grouping similar photos with perceptual dHash…';
   @override
+  String get cancelScan => 'Cancel Scan';
+  @override
   String get scanSavingSubtitle => 'Writing feature store and group index…';
   @override
   String get analyzeTitle => 'Extracting features';
@@ -1002,9 +1034,30 @@ class StringsEn extends AppStrings {
   String get exportPref => 'Export Preferences';
   @override
   String get exportPrefSubtitle =>
-      'Encrypted preference file (a few KB) for backup or migration';
+      'Encrypted preference file (.kpic, a few KB) for backup or migration';
   @override
   String get exportPrefText => 'KnowPic preference model export (keep it safe)';
+  @override
+  String get exportPrefDialogTitle => 'Export preference data?';
+  @override
+  String get exportPrefDialogContent =>
+      'An encrypted file (.kpic) will be created and handed to the system share sheet — it leaves '
+      'this app (it may be saved to Files or sent to others). The content is encrypted and only '
+      'this device can decrypt it; keep it safe.';
+  @override
+  String get importPref => 'Import Preferences';
+  @override
+  String get importPrefSubtitle => 'Restore the preference model from an encrypted backup (.kpic)';
+  @override
+  String get importPrefDialogTitle => 'Import and overwrite?';
+  @override
+  String importPrefDialogContent(int scenes, int samples) =>
+      'The $scenes scene model(s) in the file ($samples learned samples) will replace the '
+      'preferences currently on this device.';
+  @override
+  String importSuccess(int scenes) => 'Imported $scenes scene preference(s)';
+  @override
+  String importFailed(Object err) => 'Import failed: $err';
   @override
   String exportFailed(Object err) => 'Export failed: $err';
   @override
@@ -1025,7 +1078,7 @@ class StringsEn extends AppStrings {
   String get helpImprove => 'Help Improve';
   @override
   String get helpImproveSubtitle =>
-      'Only anonymized statistics (e.g. acceptance rate) are uploaded, never any photo data';
+      'Statistics (e.g. acceptance rate) stay on this device — no photo data, nothing uploaded';
   @override
   String get confirmBeforeDelete => 'Confirm Before Cleanup';
   @override

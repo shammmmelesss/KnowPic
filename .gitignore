@@ -39,6 +39,9 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
+# 导出配置含签名团队 ID，只在本地填写，不要提交
+/ios/ExportOptions.plist
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile

@@ -21,35 +21,51 @@ class ScanScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: frostedAppBar(context, title: l10n.scanTitle),
-      body: switch (progress.phase) {
-        ScanPhase.reading => _PhaseView(
-            icon: CupertinoIcons.photo_on_rectangle,
-            title: l10n.scanStatus(ScanPhase.reading),
-            subtitle: l10n.scanStatus(
-              progress.phase,
-              current: progress.current,
-              total: progress.total,
+      body: Column(
+        children: [
+          Expanded(
+            child: switch (progress.phase) {
+              ScanPhase.reading => _PhaseView(
+                  icon: CupertinoIcons.photo_on_rectangle,
+                  title: l10n.scanStatus(ScanPhase.reading),
+                  subtitle: l10n.scanStatus(
+                    progress.phase,
+                    current: progress.current,
+                    total: progress.total,
+                  ),
+                ),
+              ScanPhase.analyzing => _AnalyzeView(progress: progress),
+              ScanPhase.clustering => _PhaseView(
+                  icon: CupertinoIcons.square_grid_2x2,
+                  title: l10n.scanStatus(ScanPhase.clustering),
+                  subtitle: l10n.scanClusteringSubtitle,
+                ),
+              ScanPhase.saving => _PhaseView(
+                  icon: CupertinoIcons.floppy_disk,
+                  title: l10n.scanStatus(ScanPhase.saving),
+                  subtitle: l10n.scanSavingSubtitle,
+                ),
+              ScanPhase.done => _DoneView(progress: progress),
+              ScanPhase.failed => const _FailedView(),
+              ScanPhase.idle => _PhaseView(
+                  icon: CupertinoIcons.search,
+                  title: l10n.scanStatus(ScanPhase.idle),
+                  subtitle: l10n.scanIdleSubtitle,
+                ),
+            },
+          ),
+          // 扫描可随时取消：大相册的聚类可能跑几分钟，没有出口用户只能杀进程
+          if (progress.isRunning)
+            SafeArea(
+              minimum: const EdgeInsets.only(bottom: 20),
+              child: CupertinoButton(
+                onPressed: () =>
+                    ref.read(scanProgressProvider.notifier).cancelScan(),
+                child: Text(l10n.cancelScan),
+              ),
             ),
-          ),
-        ScanPhase.analyzing => _AnalyzeView(progress: progress),
-        ScanPhase.clustering => _PhaseView(
-            icon: CupertinoIcons.square_grid_2x2,
-            title: l10n.scanStatus(ScanPhase.clustering),
-            subtitle: l10n.scanClusteringSubtitle,
-          ),
-        ScanPhase.saving => _PhaseView(
-            icon: CupertinoIcons.floppy_disk,
-            title: l10n.scanStatus(ScanPhase.saving),
-            subtitle: l10n.scanSavingSubtitle,
-          ),
-        ScanPhase.done => _DoneView(progress: progress),
-        ScanPhase.failed => const _FailedView(),
-        ScanPhase.idle => _PhaseView(
-            icon: CupertinoIcons.search,
-            title: l10n.scanStatus(ScanPhase.idle),
-            subtitle: l10n.scanIdleSubtitle,
-          ),
-      },
+        ],
+      ),
     );
   }
 }

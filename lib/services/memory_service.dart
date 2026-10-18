@@ -7,7 +7,9 @@ import '../models/photo_asset.dart';
 class MemoryService {
   MemoryService._();
 
-  static final _rand = _SeededRandom();
+  // 固定种子的 Random：仅用于盲盒洗牌（非安全用途），
+  // 不再用自造 LCG（低位周期极短、取模分布偏斜）
+  static final _rand = math.Random(0x5eed);
 
   /// 记忆盲盒：从历史旧照中随机抽取
   static List<PhotoAsset> pickBlindBox(
@@ -35,19 +37,3 @@ class MemoryService {
   }
 }
 
-/// 简单可播种随机源（无需外部依赖）
-class _SeededRandom implements math.Random {
-  int _state = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
-
-  @override
-  int nextInt(int max) {
-    _state = (_state * 1103515245 + 12345) & 0x7fffffff;
-    return _state % max;
-  }
-
-  @override
-  double nextDouble() => nextInt(0x3fffffff) / 0x3fffffff;
-
-  @override
-  bool nextBool() => nextInt(2) == 0;
-}

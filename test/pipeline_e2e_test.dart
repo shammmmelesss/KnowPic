@@ -50,6 +50,14 @@ class _FakeLibrary implements PhotoLibraryService {
   Future<Uint8List?> loadOriginalBytes(String id) async => bytes[id];
 
   @override
+  Future<bool> copyOriginalToFile(String id, File target) async {
+    final data = bytes[id];
+    if (data == null || data.isEmpty) return false;
+    await target.writeAsBytes(data, flush: true);
+    return true;
+  }
+
+  @override
   Future<List<String>> deleteAssets(List<String> ids) async {
     deletedIds.addAll(ids);
     return const []; // 全部删除成功

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -30,6 +31,11 @@ abstract class PhotoLibraryService {
 
   /// 加载原图数据（用于回收站备份；iCloud 未下载会触发下载，故仅在用户操作时调用）
   Future<Uint8List?> loadOriginalBytes(String id);
+
+  /// 将原图流式拷贝到 [target]。
+  /// 与 loadOriginalBytes 的区别：不把整张原图读进内存（ProRAW/全景可达 50–100MB），
+  /// 避免批量清理时两张大图同时在内存触发 OOM。返回是否拷贝成功。
+  Future<bool> copyOriginalToFile(String id, File target);
 
   /// 从系统相册删除资产，返回删除失败的 id
   Future<List<String>> deleteAssets(List<String> ids);
@@ -156,7 +162,7 @@ class PhotoManagerLibrary implements PhotoLibraryService {
         isLivePhoto: e.isLivePhoto,
       );
     } catch (err) {
-      Log.e('PhotoLibrary', 'probe failed: ${e.id}', err);
+      Log.e('PhotoLibrary', 'probe failed: ${_short(e.id)}', err);
       return null;
     }
   }
@@ -171,7 +177,7 @@ class PhotoManagerLibrary implements PhotoLibraryService {
         quality: AppConfig.thumbnailQuality,
       );
     } catch (err) {
-      Log.e('PhotoLibrary', 'thumbnail failed: $id', err);
+      Log.e('PhotoLibrary', 'thumbnail failed: ${_short(id)}', err);
       return null;
     }
   }
@@ -183,10 +189,48 @@ class PhotoManagerLibrary implements PhotoLibraryService {
     try {
       return await e.originBytes;
     } catch (err) {
-      Log.e('PhotoLibrary', 'originBytes failed: $id', err);
+      Log.e('PhotoLibrary', 'originBytes failed: ${_short(id)}', err);
       return null;
     }
   }
+
+  @override
+  Future<bool> copyOriginalToFile(String id, File target) async {
+    final e = _entities[id];
+    if (e == null) return false;
+    try {
+      final src = await e.file;
+      if (src != null) {
+        // 流式拷贝：先写 .part 再 rename，避免中途失败留下半截备份文件
+        final tmp = File('${target.path}.part');
+        final sink = tmp.openWrite();
+        try {
+          await sink.addStream(src.openRead());
+          await sink.flush();
+        } finally {
+          await sink.close();
+        }
+        if (await tmp.length() <= 0) {
+          await tmp.delete();
+          return false;
+        }
+        await tmp.rename(target.path);
+        return true;
+      }
+      // 拿不到本地文件路径（少数 iCloud 资产）→ 退回一次性读取
+      final bytes = await e.originBytes;
+      if (bytes == null || bytes.isEmpty) return false;
+      await target.writeAsBytes(bytes, flush: true);
+      return true;
+    } catch (err) {
+      Log.e('PhotoLibrary', 'copy original failed: ${_short(id)}', err);
+      return false;
+    }
+  }
+
+  /// 资产 id 属于相册内部标识，日志只保留前 8 位
+  static String _short(String id) =>
+      id.length <= 8 ? id : '${id.substring(0, 8)}…';
 
   @override
   Future<List<String>> deleteAssets(List<String> ids) async {

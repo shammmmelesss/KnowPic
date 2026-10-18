@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +11,7 @@ import '../core/ios_design.dart';
 import '../l10n/app_strings.dart';
 import '../l10n/app_strings_delegate.dart';
 import '../providers/providers.dart';
+import '../services/pref_transfer.dart';
 import '../widgets/ios_ui.dart';
 
 /// 设置页（隐私/偏好模型管理，iOS 分组列表样式）
@@ -107,6 +111,13 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: Text(l10n.exportPrefSubtitle),
                 trailing: const CupertinoListTileChevron(),
                 onTap: () => _exportPref(context, ref),
+              ),
+              CupertinoListTile(
+                leading: Icon(CupertinoIcons.arrow_down_doc, color: blue, size: 24),
+                title: Text(l10n.importPref),
+                subtitle: Text(l10n.importPrefSubtitle),
+                trailing: const CupertinoListTileChevron(),
+                onTap: () => _importPref(context, ref),
               ),
               CupertinoListTile(
                 leading: Icon(CupertinoIcons.arrow_counterclockwise,
@@ -228,16 +239,94 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _exportPref(BuildContext context, WidgetRef ref) async {
+    // 文案在 await 之前取好，避免跨 async gap 再碰 context
+    final shareText = context.l10n.exportPrefText;
+    // 分享会把文件交出应用之外（文件 App / AirDrop / 第三方），
+    // 导出的是用户的行为画像，必须先确认，不能一点就发出去
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(ctx.l10n.exportPrefDialogTitle),
+        content: Text(ctx.l10n.exportPrefDialogContent),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(ctx.l10n.cancel),
+          ),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(ctx.l10n.exportPref),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
     final store = ref.read(storeProvider);
-    final file = store.prefFile;
+    final keys = ref.read(secureKeyProvider);
     try {
+      // 明文偏好绝不外发：先加密成 .kpic（AES-GCM，密钥在钥匙串）再交给分享
+      final file =
+          await PrefTransfer.exportPreferences(store, keys, store.metaDir);
       await SharePlus.instance.share(ShareParams(
-        files: [XFile(file.path, mimeType: 'application/json')],
-        text: context.l10n.exportPrefText,
+        files: [XFile(file.path, mimeType: 'application/octet-stream')],
+        text: shareText,
       ));
     } catch (e) {
       if (context.mounted) {
         showIosToast(context, context.l10n.exportFailed(e));
+      }
+    }
+  }
+
+  /// 导入加密备份：选文件 → 解密 → 确认 → 覆盖本机偏好
+  Future<void> _importPref(BuildContext context, WidgetRef ref) async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: [PrefTransfer.fileExtension],
+    );
+    final path = picked.isEmpty ? null : picked.first.path;
+    if (path == null || !context.mounted) return; // 用户取消
+
+    try {
+      final models = await PrefTransfer.readPreferences(
+        File(path),
+        ref.read(secureKeyProvider),
+      );
+      if (!context.mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: Text(ctx.l10n.importPrefDialogTitle),
+          content: Text(ctx.l10n.importPrefDialogContent(
+              models.length, PrefTransfer.totalSamples(models))),
+          actions: [
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ctx.l10n.cancel),
+            ),
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ctx.l10n.importPref),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !context.mounted) return;
+
+      final store = ref.read(storeProvider);
+      store.preferences
+        ..clear()
+        ..addAll(models);
+      await store.savePref();
+      if (!context.mounted) return;
+      ref.invalidate(learningProvider);
+      showIosToast(context, context.l10n.importSuccess(models.length));
+    } catch (e) {
+      if (context.mounted) {
+        showIosToast(context, context.l10n.importFailed(e));
       }
     }
   }
@@ -264,6 +353,8 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (ok == true && context.mounted) {
       Haptics.warning();
+      // 重置偏好时同步作废导出密钥：旧的加密备份文件从此打不开
+      await ref.read(secureKeyProvider).reset();
       await ref.read(learningProvider).confirmReset();
       if (context.mounted) {
         showIosToast(context, context.l10n.preferenceResetToast, success: true);

@@ -15,23 +15,29 @@ class RankingService {
 
   /// 计算综合分并排序（降序），返回排序后的列表
   /// 多场景偏好：按组内占主导的场景取独立偏好模型（文档 8.1）
+  /// 返回按综合分降序排列的**新列表**。
+  /// 不修改入参对象：members 里的 PhotoAsset 与 store.assets 共享同一批实例，
+  /// 直接写 finalScore 等于在 build 期间 mutate Riverpod 状态，
+  /// 还会把一次 UI 渲染的副产物写进 assets.json。
   List<PhotoAsset> sortGroup(List<PhotoAsset> members) {
     if (members.isEmpty) return members;
     final pref = _learning.modelFor(_dominantScene(members));
     final trained = pref.isTrained;
-    for (final a in members) {
-      double personal = 0;
+    final scored = members.map((a) {
+      double personal;
       if (trained) {
         personal = VectorMath.dot(a.features, pref.weights) + pref.bias;
       } else {
         // 冷启动：点积为常数 1.0（Features L1=2，权重全 0.5）
         personal = 1.0;
       }
-      a.finalScore =
-          AppConfig.objectiveRatio * a.baseScore + AppConfig.personalRatio * personal;
-    }
-    members.sort((a, b) => b.finalScore.compareTo(a.finalScore));
-    return members;
+      return a.copyWith(
+        finalScore: AppConfig.objectiveRatio * a.baseScore +
+            AppConfig.personalRatio * personal,
+      );
+    }).toList()
+      ..sort((a, b) => b.finalScore.compareTo(a.finalScore));
+    return scored;
   }
 
   /// 组内占比最高的场景（多场景偏好路由依据）

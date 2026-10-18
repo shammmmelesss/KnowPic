@@ -5,17 +5,21 @@ import 'dart:typed_data';
 class VectorMath {
   VectorMath._();
 
+  /// 点积。取两向量较短的长度：偏好模型维度来自磁盘文件，
+  /// 长度不一致时（文件损坏/版本差异）宁可少算几维也不能越界崩溃。
   static double dot(Float32List a, List<double> b) {
+    final n = a.length < b.length ? a.length : b.length;
     double s = 0;
-    for (int i = 0; i < a.length; i++) {
+    for (int i = 0; i < n; i++) {
       s += a[i] * b[i];
     }
     return s;
   }
 
   static double dotList(List<double> a, List<double> b) {
+    final n = a.length < b.length ? a.length : b.length;
     double s = 0;
-    for (int i = 0; i < a.length; i++) {
+    for (int i = 0; i < n; i++) {
       s += a[i] * b[i];
     }
     return s;
